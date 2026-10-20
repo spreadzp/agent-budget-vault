@@ -8,7 +8,7 @@ import {
 } from 'wagmi';
 import { toast } from 'sonner';
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
-import { VAULT_ABI, ARC_TESTNET_CHAIN_ID } from '../contracts';
+import { VAULT_ABI, ARC_CHAIN_ID } from '../contracts';
 import { parseAmount, formatUsdc } from '@/onchain-money';
 import { buildTxExplorerUrl } from '@/onchain-facts';
 import { VestedTicker } from './VestedTicker';
@@ -24,8 +24,8 @@ function fmtAddr(a: string) {
 export function AgentPanel() {
   const { address, chainId } = useAccount();
   const { switchChain } = useSwitchChain();
-  const isCorrectChain = chainId === ARC_TESTNET_CHAIN_ID;
-  const client = usePublicClient({ chainId: ARC_TESTNET_CHAIN_ID });
+  const isCorrectChain = chainId === ARC_CHAIN_ID;
+  const client = usePublicClient({ chainId: ARC_CHAIN_ID });
 
   // ── Vault discovery ──────────────────────────────────────────────────────
   const { vaultAddr: discoveredVault, policy, refetch } = useAgentVault(address);
@@ -104,16 +104,16 @@ export function AgentPanel() {
   }, [vaultAddr, address]);
 
   const handleClaim = () => {
-    if (!isCorrectChain) { switchChain({ chainId: ARC_TESTNET_CHAIN_ID }); return; }
+    if (!isCorrectChain) { switchChain({ chainId: ARC_CHAIN_ID }); return; }
     if (!vaultAddr || !claimAmt || !selectedPayee) { toast.error('Fill all claim fields'); return; }
     try {
-      const parsed = parseAmount(ARC_TESTNET_CHAIN_ID, claimAmt);
+      const parsed = parseAmount(ARC_CHAIN_ID, claimAmt);
       writeContract({
         address: vaultAddr as `0x${string}`,
         abi: VAULT_ABI,
         functionName: 'claim',
         args: [parsed.raw, selectedPayee as `0x${string}`],
-        chainId: ARC_TESTNET_CHAIN_ID,
+        chainId: ARC_CHAIN_ID,
       });
       toast.info('Claiming…');
     } catch (e: unknown) {
@@ -305,7 +305,7 @@ export function AgentPanel() {
                   <div className="text-right shrink-0">
                     <p className="text-sm font-semibold tabular-nums text-[var(--ink)]">{formatUsdc(c.amount)} USDC</p>
                     <a
-                      href={buildTxExplorerUrl(ARC_TESTNET_CHAIN_ID, c.txHash)}
+                      href={buildTxExplorerUrl(ARC_CHAIN_ID, c.txHash)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] transition-colors"

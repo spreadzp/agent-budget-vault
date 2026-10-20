@@ -1,0 +1,29 @@
+{
+  "chain": "arc-mainnet",
+  "chainId": 5042,
+  "rpcUrl": "https://rpc.mainnet.arc.io",
+  "explorerBase": "https://explorer.arc.io",
+  "token": {
+    "symbol": "USDC",
+    "address": "0x3600000000000000000000000000000000000000",
+    "decimals": 6
+  },
+  "contracts": {
+    "BudgetVaultFactory": {
+      "address": "0x5D1a014e1FFE3b777F0946C2dd75A7d3aecdacA4",
+      "deployTx": "0x50e3f37b4b552e53ad91edb5f925fd5dfdae5d8c9a9514eb2bfebb316226b463",
+      "deployer": "0xcdd23d104AA4C10DE65F4DD0571eDfeC0458699d"
+    }
+  },
+  "vaults": [
+    {
+      "address": "0x2860258CAf3e21c65517233aBa1e876D16D4Ff52",
+      "owner": "0xB42fCD7Fe2008f39c9c034772C960cD88C5f23b0",
+      "agent": "0xcdd23d104AA4C10DE65F4DD0571eDfeC0458699d",
+      "agentId": 2,
+      "status": "created-unfunded",
+      "createTx": "0x8fb2a823dffe20a86d6fc779e5f6790f91784c4b0adb973c73437a050f38d6bf",
+      "note": "SLICE-202-5 mainnet demo vault — awaiting $1-5 USDC funding (O2: no mainnet USDC on any wallet as of 2026-10-20)"
+    }
+  ]
+}

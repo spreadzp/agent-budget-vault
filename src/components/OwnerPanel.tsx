@@ -8,14 +8,15 @@ import {
 import { erc20Abi, isAddress } from 'viem';
 import { toast } from 'sonner';
 import { Plus, Trash2, Settings, ShieldOff, ShieldCheck, XCircle, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
-import { FACTORY_ADDRESS, FACTORY_ABI, VAULT_ABI, ARC_TESTNET_CHAIN_ID } from '../contracts';
-import { getUsdc, buildAddressExplorerUrl } from '@/onchain-facts';
+import { FACTORY_ADDRESS, FACTORY_ABI, VAULT_ABI, ARC_CHAIN_ID } from '../contracts';
+import { getUsdc, buildAddressExplorerUrl, requireChain } from '@/onchain-facts';
 import { parseAmount, formatUsdc } from '@/onchain-money';
 import { TxHashBadge } from './TxHashBadge';
 import { VestedTicker } from './VestedTicker';
 import { useOwnerVaults, VaultInfo } from '../hooks/useVaultDiscovery';
 
-const USDC = getUsdc(ARC_TESTNET_CHAIN_ID)!;
+const USDC = getUsdc(ARC_CHAIN_ID)!;
+const CHAIN_NAME = requireChain(ARC_CHAIN_ID).name;
 const factoryConfigured = Boolean(FACTORY_ADDRESS);
 const ZERO = '0x0000000000000000000000000000000000000000' as `0x${string}`;
 
@@ -25,17 +26,17 @@ function fmtAddr(a: string) {
 }
 
 const STATUS_BADGE: Record<VaultInfo['status'], string> = {
-  active:    'bg-emerald-50 text-emerald-700 border-emerald-200',
-  paused:    'bg-amber-50 text-amber-700 border-amber-200',
+  active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  paused: 'bg-amber-50 text-amber-700 border-amber-200',
   cancelled: 'bg-red-50 text-red-700 border-red-200',
-  expired:   'bg-slate-100 text-slate-500 border-slate-200',
-  unfunded:  'bg-slate-100 text-slate-500 border-slate-200',
+  expired: 'bg-slate-100 text-slate-500 border-slate-200',
+  unfunded: 'bg-slate-100 text-slate-500 border-slate-200',
 };
 
 export function OwnerPanel() {
   const { address, chainId } = useAccount();
   // M-2: derive disabled state before any click
-  const isCorrectChain = chainId === ARC_TESTNET_CHAIN_ID;
+  const isCorrectChain = chainId === ARC_CHAIN_ID;
   const { switchChain } = useSwitchChain();
 
   // ── Vault discovery ──────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ export function OwnerPanel() {
         abi: VAULT_ABI,
         functionName: 'deposit',
         args: [pd.amt, pd.mode],
-        chainId: ARC_TESTNET_CHAIN_ID,
+        chainId: ARC_CHAIN_ID,
       },
       {
         onError: (e) => {
@@ -138,12 +139,12 @@ export function OwnerPanel() {
   }, [approvalDone, fireDeposit]);
 
   const handleApproveAndDeposit = () => {
-    if (!isCorrectChain) { switchChain({ chainId: ARC_TESTNET_CHAIN_ID }); return; }
+    if (!isCorrectChain) { switchChain({ chainId: ARC_CHAIN_ID }); return; }
     if (!vaultAddr || !depositAmt) return;
     setDepositFailed(false);
     setStaledVault('');
     try {
-      const parsed = parseAmount(ARC_TESTNET_CHAIN_ID, depositAmt);
+      const parsed = parseAmount(ARC_CHAIN_ID, depositAmt);
       pendingDepositRef.current = { amt: parsed.raw, vault: vaultAddr, mode: depositMode };
       writeContract(
         {
@@ -151,7 +152,7 @@ export function OwnerPanel() {
           abi: erc20Abi,
           functionName: 'approve',
           args: [vaultAddr as `0x${string}`, parsed.raw],
-          chainId: ARC_TESTNET_CHAIN_ID,
+          chainId: ARC_CHAIN_ID,
         },
         {
           onSuccess: (hash) => {
@@ -173,7 +174,7 @@ export function OwnerPanel() {
       abi: erc20Abi,
       functionName: 'approve',
       args: [staledVault as `0x${string}`, 0n],
-      chainId: ARC_TESTNET_CHAIN_ID,
+      chainId: ARC_CHAIN_ID,
     });
     setDepositFailed(false);
     setStaledVault('');
@@ -181,7 +182,7 @@ export function OwnerPanel() {
   };
 
   const handleCreateVault = () => {
-    if (!isCorrectChain) { switchChain({ chainId: ARC_TESTNET_CHAIN_ID }); return; }
+    if (!isCorrectChain) { switchChain({ chainId: ARC_CHAIN_ID }); return; }
     if (!factoryConfigured) { toast.error('Factory not deployed yet.'); return; }
 
     // M-1: address validation
@@ -210,13 +211,13 @@ export function OwnerPanel() {
         registryAddr,
         operatorAddr,
       ],
-      chainId: ARC_TESTNET_CHAIN_ID,
+      chainId: ARC_CHAIN_ID,
     });
     toast.info('Creating vault…');
   };
 
   const vaultAction = (fn: string, args: unknown[]) => {
-    if (!isCorrectChain) { switchChain({ chainId: ARC_TESTNET_CHAIN_ID }); return; }
+    if (!isCorrectChain) { switchChain({ chainId: ARC_CHAIN_ID }); return; }
     if (!vaultAddr) { toast.error('Select or enter a vault'); return; }
 
     // M-1: validate address-type args
@@ -237,7 +238,7 @@ export function OwnerPanel() {
       abi: VAULT_ABI,
       functionName: fn,
       args,
-      chainId: ARC_TESTNET_CHAIN_ID,
+      chainId: ARC_CHAIN_ID,
     });
     toast.info(`Sending ${fn}…`);
   };
@@ -267,10 +268,10 @@ export function OwnerPanel() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-2">
           <AlertTriangle size={14} className="text-amber-600 shrink-0" />
           <p className="text-xs text-amber-700">
-            Switch to Arc Testnet to use Owner actions.{' '}
+            Switch to {CHAIN_NAME} to use Owner actions.{' '}
             <button
               className="underline font-medium"
-              onClick={() => switchChain({ chainId: ARC_TESTNET_CHAIN_ID })}
+              onClick={() => switchChain({ chainId: ARC_CHAIN_ID })}
             >
               Switch now
             </button>
@@ -431,7 +432,7 @@ export function OwnerPanel() {
           />
           {selectedVault && (
             <a
-              href={buildAddressExplorerUrl(ARC_TESTNET_CHAIN_ID, selectedVault)}
+              href={buildAddressExplorerUrl(ARC_CHAIN_ID, selectedVault)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-[var(--muted)] hover:text-[var(--ink)] transition-colors underline underline-offset-2"
@@ -472,7 +473,7 @@ export function OwnerPanel() {
               disabled={isBusy || !isCorrectChain}
             >
               {!isCorrectChain
-                ? 'Switch to Arc Testnet first'
+                ? `Switch to ${CHAIN_NAME} first`
                 : isBusy
                   ? 'Confirm in wallet…'
                   : 'Approve & Deposit'}
@@ -558,7 +559,7 @@ export function OwnerPanel() {
                 <button
                   className="px-3 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-sm font-medium transition-colors disabled:opacity-50"
                   onClick={() => {
-                    const raw = txCap ? parseAmount(ARC_TESTNET_CHAIN_ID, txCap).raw : 0n;
+                    const raw = txCap ? parseAmount(ARC_CHAIN_ID, txCap).raw : 0n;
                     vaultAction('setPerTxCap', [raw]);
                   }}
                   disabled={isBusy}

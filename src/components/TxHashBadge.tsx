@@ -1,7 +1,7 @@
 import React from 'react';
 import { ExternalLink } from 'lucide-react';
 import { buildTxExplorerUrl } from '@/onchain-facts';
-import { ARC_TESTNET_CHAIN_ID } from '../contracts';
+import { ARC_CHAIN_ID } from '../contracts';
 
 interface Props {
   hash?: `0x${string}`;
@@ -10,7 +10,7 @@ interface Props {
 export function TxHashBadge({ hash }: Props) {
   if (!hash) return null;
   const short = `${hash.slice(0, 10)}…${hash.slice(-6)}`;
-  const url = buildTxExplorerUrl(ARC_TESTNET_CHAIN_ID, hash);
+  const url = buildTxExplorerUrl(ARC_CHAIN_ID, hash);
   return (
     <a
       href={url}

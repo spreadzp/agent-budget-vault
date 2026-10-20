@@ -7,6 +7,11 @@ import vaultArtifact from '../contracts/out/BudgetVault.sol/BudgetVault.json';
 
 export const ARC_TESTNET_CHAIN_ID = 5042002;
 
+// Target chain — Arc testnet by default; set VITE_CHAIN_ID=5042 for mainnet.
+export const ARC_CHAIN_ID = Number(
+  import.meta.env.VITE_CHAIN_ID ?? ARC_TESTNET_CHAIN_ID,
+);
+
 // Set after deploy — also stored in AGENTS.md
 export const FACTORY_ADDRESS = (
   import.meta.env.VITE_FACTORY_ADDRESS ?? ''

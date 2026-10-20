@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { usePublicClient, useAccount } from 'wagmi';
 import { isAddress } from 'viem';
 import { ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
-import { ARC_TESTNET_CHAIN_ID } from '../contracts';
+import { ARC_CHAIN_ID } from '../contracts';
 import { buildTxExplorerUrl, buildAddressExplorerUrl } from '@/onchain-facts';
 import { formatUsdc } from '@/onchain-money';
 import { useAllVaultAddresses } from '../hooks/useVaultDiscovery';
@@ -15,7 +15,7 @@ function fmtAddr(a: string) {
 
 export function VendorPanel() {
   const { address } = useAccount();
-  const client = usePublicClient({ chainId: ARC_TESTNET_CHAIN_ID });
+  const client = usePublicClient({ chainId: ARC_CHAIN_ID });
   const { addresses: allVaults, count } = useAllVaultAddresses();
 
   // Payee filter: default to connected wallet, allow override
@@ -200,7 +200,7 @@ export function VendorPanel() {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-medium text-[var(--muted)]">From vault</span>
                       <a
-                        href={buildAddressExplorerUrl(ARC_TESTNET_CHAIN_ID, ev.vault)}
+                        href={buildAddressExplorerUrl(ARC_CHAIN_ID, ev.vault)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-mono text-xs text-[var(--ink)] hover:underline"
@@ -215,7 +215,7 @@ export function VendorPanel() {
                       {formatUsdc(ev.amount)} USDC
                     </p>
                     <a
-                      href={buildTxExplorerUrl(ARC_TESTNET_CHAIN_ID, ev.txHash)}
+                      href={buildTxExplorerUrl(ARC_CHAIN_ID, ev.txHash)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
@@ -290,7 +290,7 @@ export function VendorPanel() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold tabular-nums text-[var(--ink)]">{formatUsdc(ev.amount)} USDC</p>
-                      <a href={buildTxExplorerUrl(ARC_TESTNET_CHAIN_ID, ev.txHash)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]">
+                      <a href={buildTxExplorerUrl(ARC_CHAIN_ID, ev.txHash)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--ink)]">
                         View <ExternalLink size={10} />
                       </a>
                     </div>

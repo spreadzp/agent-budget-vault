@@ -2,11 +2,15 @@ import { useState } from 'react';
 import { ConnectKitButton } from 'connectkit';
 import { useAccount } from 'wagmi';
 import { Bot } from 'lucide-react';
+import { ARC_CHAIN_ID } from './contracts';
+import { requireChain } from './onchain-facts';
 import { RoleSwitcher, Role } from './components/RoleSwitcher';
 import { NetworkBadge } from './components/NetworkBadge';
 import { OwnerPanel } from './components/OwnerPanel';
 import { AgentPanel } from './components/AgentPanel';
 import { VendorPanel } from './components/VendorPanel';
+
+const CHAIN_NAME = requireChain(ARC_CHAIN_ID).name;
 
 const ROLE_DESCRIPTIONS: Record<Role, string> = {
   owner: 'Create vaults, fund them with USDC, manage payees, set limits, pause or cancel streams.',
@@ -56,7 +60,7 @@ export default function App() {
             </div>
             <p className="text-sm font-medium text-[var(--ink)]">Connect your wallet</p>
             <p className="text-xs text-[var(--muted)] max-w-xs mx-auto">
-              Connect to Arc Testnet to create or interact with agent budget vaults.
+              Connect to {CHAIN_NAME} to create or interact with agent budget vaults.
             </p>
             <div className="flex justify-center pt-1">
               <ConnectKitButton label="Connect Wallet" />

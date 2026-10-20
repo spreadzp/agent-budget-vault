@@ -8,7 +8,7 @@
 import { useReadContract, useReadContracts } from 'wagmi';
 import { useMemo } from 'react';
 import type { Abi } from 'viem';
-import { FACTORY_ADDRESS, FACTORY_ABI, VAULT_ABI, ARC_TESTNET_CHAIN_ID } from '../contracts';
+import { FACTORY_ADDRESS, FACTORY_ABI, VAULT_ABI, ARC_CHAIN_ID } from '../contracts';
 import { formatUsdc } from '@/onchain-money';
 
 const FACTORY_ABI_TYPED = FACTORY_ABI as Abi;
@@ -59,7 +59,7 @@ export function useOwnerVaults(ownerAddress?: `0x${string}`) {
     address: FACTORY_ADDRESS,
     abi: FACTORY_ABI_TYPED,
     functionName: 'vaultCount',
-    chainId: ARC_TESTNET_CHAIN_ID,
+    chainId: ARC_CHAIN_ID,
     query: { enabled: factoryEnabled, refetchInterval: 10_000 },
   });
   const count = typeof countRaw === 'bigint' ? Number(countRaw) : 0;
@@ -72,7 +72,7 @@ export function useOwnerVaults(ownerAddress?: `0x${string}`) {
         abi: FACTORY_ABI_TYPED,
         functionName: 'vaults',
         args: [BigInt(i)],
-        chainId: ARC_TESTNET_CHAIN_ID,
+        chainId: ARC_CHAIN_ID,
       })),
     [count],
   );
@@ -98,7 +98,7 @@ export function useOwnerVaults(ownerAddress?: `0x${string}`) {
         abi: VAULT_ABI_TYPED,
         functionName: 'policy',
         args: [],
-        chainId: ARC_TESTNET_CHAIN_ID,
+        chainId: ARC_CHAIN_ID,
       })),
     [vaultAddrs],
   );
@@ -144,7 +144,7 @@ export function useAgentVault(agentAddress?: `0x${string}`) {
     abi: FACTORY_ABI_TYPED,
     functionName: 'vaultOf',
     args: [agentAddress ?? ZERO],
-    chainId: ARC_TESTNET_CHAIN_ID,
+    chainId: ARC_CHAIN_ID,
     query: { enabled: factoryEnabled && Boolean(agentAddress) },
   });
 
@@ -155,7 +155,7 @@ export function useAgentVault(agentAddress?: `0x${string}`) {
     address: vaultAddr ?? ZERO,
     abi: VAULT_ABI_TYPED,
     functionName: 'policy',
-    chainId: ARC_TESTNET_CHAIN_ID,
+    chainId: ARC_CHAIN_ID,
     query: { enabled: Boolean(vaultAddr), refetchInterval: 10_000 },
   });
 
@@ -180,7 +180,7 @@ export function useAllVaultAddresses() {
     address: FACTORY_ADDRESS,
     abi: FACTORY_ABI_TYPED,
     functionName: 'vaultCount',
-    chainId: ARC_TESTNET_CHAIN_ID,
+    chainId: ARC_CHAIN_ID,
     query: { enabled: factoryEnabled, refetchInterval: 15_000 },
   });
   const count = typeof countRaw === 'bigint' ? Number(countRaw) : 0;
@@ -192,7 +192,7 @@ export function useAllVaultAddresses() {
         abi: FACTORY_ABI_TYPED,
         functionName: 'vaults',
         args: [BigInt(i)],
-        chainId: ARC_TESTNET_CHAIN_ID,
+        chainId: ARC_CHAIN_ID,
       })),
     [count],
   );
