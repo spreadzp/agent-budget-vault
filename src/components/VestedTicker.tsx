@@ -18,6 +18,8 @@ interface Props {
   cancelled: boolean;
   /** cancel timestamp, if cancelled */
   cancelTime?: bigint;
+  /** whether the stream is currently paused — freezes the live ticker */
+  paused?: boolean;
   /** show progress bar (default true) */
   showProgress?: boolean;
 }
@@ -37,20 +39,26 @@ export function VestedTicker({
   totalDeposited,
   cancelled,
   cancelTime,
+  paused = false,
   showProgress = true,
 }: Props) {
   const [now, setNow] = useState(() => BigInt(Math.floor(Date.now() / 1000)));
 
   useEffect(() => {
+    // When paused or cancelled, no need to tick every second
+    if (paused || cancelled) return;
     const id = setInterval(
       () => setNow(BigInt(Math.floor(Date.now() / 1000))),
       1000,
     );
     return () => clearInterval(id);
-  }, []);
+  }, [paused, cancelled]);
 
   let liveVested = vestedRaw;
-  if (rate > 0n && startTime > 0n) {
+  if (paused || cancelled) {
+    // Frozen: show the snapshot from the contract read
+    liveVested = vestedRaw;
+  } else if (rate > 0n && startTime > 0n) {
     const effectiveEnd = cancelled && cancelTime ? cancelTime : endTime;
     const ts = clamp(now, startTime, effectiveEnd);
     if (ts > startTime) {
@@ -75,7 +83,7 @@ export function VestedTicker({
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-xl bg-[var(--surface-muted)] px-4 py-3">
           <p className="text-xs text-[var(--muted)] uppercase tracking-widest font-medium mb-0.5">
-            Vested
+            Vested{paused && <span className="ml-1 normal-case text-amber-600">(paused)</span>}
           </p>
           <p className="text-lg font-semibold tabular-nums text-[var(--ink)] display">
             {formatUsdc(liveVested)}{' '}

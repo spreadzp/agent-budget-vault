@@ -56,6 +56,21 @@ export interface ScanResult {
   logs: ClaimedLog[];
   /** How many vaults produced at least one RPC error and were skipped. */
   failedCount: number;
+  /**
+   * true when at least one vault hit the MAX_CHUNKS cap before reaching
+   * block 0 (or earliestBlock). Results are a partial window; earlier events
+   * may be missing.
+   */
+  truncated: boolean;
+  /** The lowest block actually scanned across all vaults. */
+  earliestScanned: bigint;
+}
+
+/** Internal per-vault scan result, carries the truncated flag separately. */
+interface VaultScanResult {
+  logs: ClaimedLog[];
+  truncated: boolean;
+  earliestScanned: bigint;
 }
 
 /**
@@ -68,15 +83,17 @@ async function scanOneVault(
   vault: `0x${string}`,
   headBlock: bigint,
   opts: ScanOptions,
-): Promise<ClaimedLog[]> {
+): Promise<VaultScanResult> {
   const earliest = opts.earliestBlock ?? 0n;
   const results: ClaimedLog[] = [];
   let toBlock = headBlock;
   let chunks = 0;
+  let lastFromBlock = headBlock;
 
   while (chunks < MAX_CHUNKS) {
     const fromBlock = toBlock > CHUNK ? toBlock - CHUNK : 0n;
     const clampedFrom = fromBlock < earliest ? earliest : fromBlock;
+    lastFromBlock = clampedFrom;
 
     opts.onProgress?.({ vault, fromBlock: clampedFrom, toBlock, headBlock });
 
@@ -106,12 +123,16 @@ async function scanOneVault(
 
     chunks++;
 
-    // Stop scanning further back if we've reached the earliest block
-    if (clampedFrom <= earliest || toBlock < CHUNK) break;
+    // Natural stop: reached the earliest target block
+    if (clampedFrom <= earliest || toBlock < CHUNK) {
+      return { logs: results, truncated: false, earliestScanned: clampedFrom };
+    }
+
     toBlock = clampedFrom - 1n;
   }
 
-  return results;
+  // Exited via chunk cap — results are partial
+  return { logs: results, truncated: true, earliestScanned: lastFromBlock };
 }
 
 /**
@@ -126,12 +147,16 @@ export async function scanClaimedLogs(
   const headBlock = await client.getBlockNumber();
   const all: ClaimedLog[] = [];
   let failedCount = 0;
+  let truncated = false;
+  let earliestScanned = headBlock;
 
   for (const vault of vaults) {
     try {
       // eslint-disable-next-line no-await-in-loop -- sequential to stay under rate limits
-      const logs = await scanOneVault(client, vault, headBlock, opts);
-      all.push(...logs);
+      const res = await scanOneVault(client, vault, headBlock, opts);
+      all.push(...res.logs);
+      if (res.truncated) truncated = true;
+      if (res.earliestScanned < earliestScanned) earliestScanned = res.earliestScanned;
     } catch {
       failedCount++;
     }
@@ -140,5 +165,5 @@ export async function scanClaimedLogs(
   // Sort newest-first
   all.sort((a, b) => (a.blockNumber < b.blockNumber ? 1 : -1));
 
-  return { logs: all, failedCount };
+  return { logs: all, failedCount, truncated, earliestScanned };
 }

@@ -16,7 +16,10 @@ import { TxHashBadge } from './TxHashBadge';
 import { useAgentVault } from '../hooks/useVaultDiscovery';
 import { scanClaimedLogs, type ClaimedLog, type ScanProgress } from '../lib/scanClaimedLogs';
 
-function fmtAddr(a: string) { return `${a.slice(0, 8)}…${a.slice(-4)}`; }
+// N-4: 6+4 hex, full address on hover
+function fmtAddr(a: string) {
+  return <span title={a}>{`${a.slice(0, 8)}…${a.slice(-4)}`}</span>;
+}
 
 export function AgentPanel() {
   const { address, chainId } = useAccount();
@@ -47,41 +50,48 @@ export function AgentPanel() {
 
   const { writeContract, isPending } = useWriteContract({
     mutation: {
-      onSuccess: (hash) => {
-        setLastHash(hash);
-        setTimeout(() => {
-          void refetch();
-          void fetchClaims();
-        }, 4000);
-      },
+      onSuccess: (hash) => setLastHash(hash),
       onError: (e) => toast.error(e.message.slice(0, 120)),
     },
   });
 
-  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: lastHash });
+  // N-3: refetch policy on confirmed receipt, not setTimeout
+  const { isLoading: isConfirming, isSuccess: txConfirmed } =
+    useWaitForTransactionReceipt({ hash: lastHash });
+
+  useEffect(() => {
+    if (txConfirmed) {
+      refetch();
+      void fetchClaims();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txConfirmed]);
 
   // ── Claim history ────────────────────────────────────────────────────────
   const [claims, setClaims] = useState<ClaimedLog[]>([]);
   const [claimsLoading, setClaimsLoading] = useState(false);
   const [claimsProgress, setClaimsProgress] = useState<ScanProgress | null>(null);
   const [claimsFailed, setClaimsFailed] = useState(0);
+  // H-2: truncation signal
+  const [claimsTruncated, setClaimsTruncated] = useState(false);
 
   const fetchClaims = async () => {
-    if (!vaultAddr || !address || !client) return;
+    if (!vaultAddr || !client) return;
     setClaimsLoading(true);
     setClaimsProgress(null);
     setClaimsFailed(0);
+    setClaimsTruncated(false);
     try {
-      const { logs, failedCount } = await scanClaimedLogs(
+      // M-4: drop callerFilter — scan ALL vault Claimed events so operator
+      // claims (caller = operator) also appear
+      const { logs, failedCount, truncated } = await scanClaimedLogs(
         client,
         [vaultAddr as `0x${string}`],
-        {
-          callerFilter: address,
-          onProgress: (p) => setClaimsProgress(p),
-        },
+        { onProgress: (p) => setClaimsProgress(p) },
       );
       setClaims(logs);
       setClaimsFailed(failedCount);
+      setClaimsTruncated(truncated);
     } finally {
       setClaimsLoading(false);
       setClaimsProgress(null);
@@ -89,7 +99,7 @@ export function AgentPanel() {
   };
 
   useEffect(() => {
-    if (vaultAddr && address) { void fetchClaims(); }
+    if (vaultAddr) { void fetchClaims(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultAddr, address]);
 
@@ -117,6 +127,8 @@ export function AgentPanel() {
   const cardCls = 'rounded-2xl border border-[var(--border)] bg-[var(--surface)] backdrop-blur-sm p-5 space-y-4';
   const btnPrimary = 'w-full py-2.5 px-4 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] disabled:opacity-50 disabled:cursor-not-allowed';
 
+  const claimsTotal = claims.reduce((s, c) => s + c.amount, 0n);
+
   return (
     <div className="space-y-5">
       {lastHash && (
@@ -131,7 +143,8 @@ export function AgentPanel() {
         {discoveredVault ? (
           <div>
             <p className="text-xs text-[var(--muted)] mb-1">Your vault</p>
-            <p className="font-mono text-xs text-[var(--ink)]">{discoveredVault}</p>
+            {/* N-4: full address on hover */}
+            <p className="font-mono text-xs text-[var(--ink)]" title={discoveredVault}>{discoveredVault}</p>
           </div>
         ) : (
           <div>
@@ -170,6 +183,7 @@ export function AgentPanel() {
               endTime={activePolicy.endTime}
               totalDeposited={activePolicy.vested + activePolicy.claimable}
               cancelled={activePolicy.cancelled}
+              paused={activePolicy.paused}
               showProgress
             />
             {(activePolicy.paused || activePolicy.cancelled) && (
@@ -191,10 +205,11 @@ export function AgentPanel() {
               {([
                 ['Start', activePolicy.startTime > 0n ? new Date(Number(activePolicy.startTime) * 1000).toLocaleString() : '—'],
                 ['End', activePolicy.endTime > 0n ? new Date(Number(activePolicy.endTime) * 1000).toLocaleString() : '—'],
-                ['Rate/s', activePolicy.rate > 0n ? `${(Number(activePolicy.rate) / 1e6).toFixed(8)} USDC` : '—'],
+                // M-5: use formatUsdc for rate display to avoid float precision loss
+                ['Rate/s', activePolicy.rate > 0n ? `${formatUsdc(activePolicy.rate)} USDC/s` : '—'],
                 ['Per-tx Cap', activePolicy.perTxCap > 0n ? `${formatUsdc(activePolicy.perTxCap)} USDC` : 'None'],
                 ['Agent ID', activePolicy.agentId.toString()],
-                ['Operator', activePolicy.operator !== '0x0000000000000000000000000000000000000000' ? fmtAddr(activePolicy.operator) : 'None'],
+                ['Operator', activePolicy.operator !== '0x0000000000000000000000000000000000000000' ? activePolicy.operator.slice(0, 8) + '…' + activePolicy.operator.slice(-4) : 'None'],
               ] as [string, string][]).map(([k, v]) => (
                 <React.Fragment key={k}>
                   <span className="text-[var(--muted)] text-xs font-medium">{k}</span>
@@ -221,7 +236,7 @@ export function AgentPanel() {
                     onChange={e => setSelectedPayee(e.target.value)}
                   >
                     {activePolicy.payees.map(p => (
-                      <option key={p} value={p}>{fmtAddr(p)}</option>
+                      <option key={p} value={p}>{p.slice(0, 8)}…{p.slice(-4)}</option>
                     ))}
                   </select>
                 ) : (
@@ -238,16 +253,23 @@ export function AgentPanel() {
             </div>
           </div>
 
-          {/* My claims history */}
+          {/* Vault claim history (M-4: renamed, all callers) */}
           <div className={cardCls}>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[var(--ink)]">My Claims</h3>
+              <h3 className="text-sm font-semibold text-[var(--ink)]">Vault Claim History</h3>
               {claims.length > 0 && (
                 <span className="text-xs tabular-nums text-[var(--muted)]">
-                  Total: {formatUsdc(claims.reduce((s, c) => s + c.amount, 0n))} USDC
+                  {/* H-2: label totals when truncated */}
+                  {claimsTruncated ? '(recent window) ' : ''}Total: {formatUsdc(claimsTotal)} USDC
                 </span>
               )}
             </div>
+            {/* H-2: truncation warning */}
+            {claimsTruncated && (
+              <p className="text-xs text-amber-600">
+                Showing last ~48k blocks — earlier claims may be missing
+              </p>
+            )}
             {claimsLoading && (
               <p className="text-xs text-[var(--muted)]">
                 {claimsProgress
@@ -261,25 +283,39 @@ export function AgentPanel() {
             {!claimsLoading && claims.length === 0 && claimsFailed === 0 && (
               <p className="text-xs text-[var(--muted)]">No claims found in recent history.</p>
             )}
-            {claims.map((c, i) => (
-              <div key={i} className="rounded-xl bg-[var(--surface-muted)] px-4 py-3 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-mono text-[var(--ink)]">To: {fmtAddr(c.payee)}</p>
-                  <p className="text-xs text-[var(--muted)] mt-0.5">Block {c.blockNumber.toString()}</p>
+            {/* N-2: stable key from txHash+blockNumber */}
+            {claims.map((c) => {
+              // M-4: flag operator claims
+              const isOperatorClaim = address && c.caller.toLowerCase() !== address.toLowerCase();
+              return (
+                <div
+                  key={`${c.txHash}-${c.blockNumber.toString()}`}
+                  className="rounded-xl bg-[var(--surface-muted)] px-4 py-3 flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs font-mono text-[var(--ink)]">To: {fmtAddr(c.payee)}</p>
+                      {/* M-4: "via operator" badge */}
+                      {isOperatorClaim && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 text-xs font-medium">via operator</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-[var(--muted)] mt-0.5">Block {c.blockNumber.toString()}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-semibold tabular-nums text-[var(--ink)]">{formatUsdc(c.amount)} USDC</p>
+                    <a
+                      href={buildTxExplorerUrl(ARC_TESTNET_CHAIN_ID, c.txHash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
+                    >
+                      View <ExternalLink size={10} />
+                    </a>
+                  </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-semibold tabular-nums text-[var(--ink)]">{formatUsdc(c.amount)} USDC</p>
-                  <a
-                    href={buildTxExplorerUrl(ARC_TESTNET_CHAIN_ID, c.txHash)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
-                  >
-                    View <ExternalLink size={10} />
-                  </a>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
