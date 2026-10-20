@@ -2,6 +2,7 @@
   "chain": "arc-mainnet",
   "chainId": 5042,
   "rpcUrl": "https://rpc.mainnet.arc.io",
+  "rpcMirror": "https://rpc.blockdaemon.mainnet.arc.io",
   "explorerBase": "https://explorer.arc.io",
   "token": {
     "symbol": "USDC",
@@ -21,9 +22,20 @@
       "owner": "0xB42fCD7Fe2008f39c9c034772C960cD88C5f23b0",
       "agent": "0xcdd23d104AA4C10DE65F4DD0571eDfeC0458699d",
       "agentId": 2,
-      "status": "created-unfunded",
+      "status": "funded-active",
       "createTx": "0x8fb2a823dffe20a86d6fc779e5f6790f91784c4b0adb973c73437a050f38d6bf",
-      "note": "SLICE-202-5 mainnet demo vault — awaiting $1-5 USDC funding (O2: no mainnet USDC on any wallet as of 2026-10-20)"
+      "approveTx": "0xfb313a05825556aa0b4773a47fb1f2cc1587a20edb835e65d7f1909156e0b1aa",
+      "depositTx": "0xaf0b2dd109690824f7d573df2563eb83b49fe2cb901952fccd4c1e98119d5a56",
+      "depositedUsdc": 3,
+      "rate": 1,
+      "perTxCap": 1000000,
+      "addPayeeTx": "0x92a234f6c6ad1152bf64911a5aa0a312eacf8beb49c89189a85c6b7833073787",
+      "setPerTxCapTx": "0xc927d0ac15518b31a05855ab2a8de7100123b90f562bb9bf0e760990f1194a54",
+      "payee": "0x9a664574282b61d31f5A4f22DE63c8Ad248e95A5",
+      "claimTx": "0xab1286328863f5ec4dbb9b040587114fc3966b40506dfc2feb5a85a375d9013d",
+      "claimedUnits": 55,
+      "payeeBalanceDelta": "99020 -> 99075",
+      "note": "SLICE-202-5 mainnet demo vault — funded 3 USDC, first real claim executed 2026-10-20. Funding consolidated from ARC_OPS/ARC_VENUE_PROVIDER/ARC_EVALUATOR wallets + user top-up. See docs/mainnet-flow.md"
     }
   ]
 }
