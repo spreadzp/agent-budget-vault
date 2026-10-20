@@ -68,6 +68,7 @@ The `operator` slot is designed for a `SignedIntent` push-payment contract: inst
 | addPayee (vendor) | [`0x92a234…3787`](https://explorer.arc.io/tx/0x92a234f6c6ad1152bf64911a5aa0a312eacf8beb49c89189a85c6b7833073787) |
 | setPerTxCap 1 USDC | [`0xc927d0…4a54`](https://explorer.arc.io/tx/0xc927d0ac15518b31a05855ab2a8de7100123b90f562bb9bf0e760990f1194a54) |
 | **claim → vendor (+55 units)** | [`0xab1286…013d`](https://explorer.arc.io/tx/0xab1286328863f5ec4dbb9b040587114fc3966b40506dfc2feb5a85a375d9013d) |
+| **claim → vendor (+30 units, via UI)** | [`0x99a641…0c6e`](https://explorer.arc.io/tx/0x99a6418d86ac4cb8477a44402bd076bca45fa7d205b04244fce3734fa97d0c6e) |
 
 ## Contracts (Arc Testnet)
 
@@ -157,6 +158,8 @@ Connect a wallet on Arc Testnet (get test USDC from the **Get test USDC** button
 
 <!-- VIDEO_LINK -->
 Three-actor walkthrough: owner creates & funds a vault, allowlists a vendor, the agent claims USDC to it, and the vendor view shows the incoming payment — verified on Arc mainnet (chainId 5042).
+
+Recorded 2026-10-20 (~3 min): owner vault view → agent submits a **live** `claim` (tx [`0x99a641…0c6e`](https://explorer.arc.io/tx/0x99a6418d86ac4cb8477a44402bd076bca45fa7d205b04244fce3734fa97d0c6e)) → vendor scan shows the new payment → explorer confirms `Success`. Raw capture: `docs/EPICS/202-agent-budget-vault/agent-allowance-demo.webm`; hosted link lands here once uploaded.
 
 ## Built with Arc Studio
 

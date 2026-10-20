@@ -35,10 +35,11 @@ Plus a manual user top-up → owner reached 6.224 USDC before the run.
 3. **addPayee(vendor)** — [`0x92a234f6c6ad1152bf64911a5aa0a312eacf8beb49c89189a85c6b7833073787`](https://explorer.arc.io/tx/0x92a234f6c6ad1152bf64911a5aa0a312eacf8beb49c89189a85c6b7833073787)
 4. **setPerTxCap(1 USDC)** — [`0xc927d0ac15518b31a05855ab2a8de7100123b90f562bb9bf0e760990f1194a54`](https://explorer.arc.io/tx/0xc927d0ac15518b31a05855ab2a8de7100123b90f562bb9bf0e760990f1194a54)
 5. **claim(55 units → vendor)** by agent — [`0xab1286328863f5ec4dbb9b040587114fc3966b40506dfc2feb5a85a375d9013d`](https://explorer.arc.io/tx/0xab1286328863f5ec4dbb9b040587114fc3966b40506dfc2feb5a85a375d9013d)
+6. **claim(30 units → vendor)** by agent via the mainnet UI (demo video recording, block 27001867) — [`0x99a6418d86ac4cb8477a44402bd076bca45fa7d205b04244fce3734fa97d0c6e`](https://explorer.arc.io/tx/0x99a6418d86ac4cb8477a44402bd076bca45fa7d205b04244fce3734fa97d0c6e)
 
 ## Result
 
-- Payee USDC (`balanceOf`): **99,020 → 99,075** (+55 units) ✅
+- Payee USDC (`balanceOf`): **99,020 → 99,075 → 99,105** (+55, +30 units) ✅
 - Stream active: `rate=1`, `paused=false`, `perTxCap=1_000_000`, vendor allowlisted.
 - Frontend mainnet mode (`VITE_CHAIN_ID=5042`, `.env.mainnet`) verified: Vendor view shows 1 vault in registry.
 
