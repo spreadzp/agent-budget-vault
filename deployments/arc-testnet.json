@@ -1,0 +1,30 @@
+{
+  "chain": "arc-testnet",
+  "chainId": 5042002,
+  "rpcUrl": "https://rpc.testnet.arc.io",
+  "explorerBase": "https://explorer.testnet.arc.io",
+  "token": {
+    "symbol": "USDC",
+    "address": "0x3600000000000000000000000000000000000000",
+    "decimals": 6
+  },
+  "contracts": {
+    "BudgetVaultFactory": "0x0f36cdda646bad0e8e65c48b2ee7304dfca84d25"
+  },
+  "vaults": [
+    {
+      "address": "0x392650B0d268b6370863c2f7147D96c585e09634",
+      "owner": "0xB42fCD7Fe2008f39c9c034772C960cD88C5f23b0",
+      "agent": "0xB42fCD7Fe2008f39c9c034772C960cD88C5f23b0",
+      "status": "cancelled",
+      "note": "SLICE-202-3 seed vault"
+    },
+    {
+      "address": "0x1eFbDB636211f2Ecc3295c01C77000633E957DEa",
+      "owner": "0xB42fCD7Fe2008f39c9c034772C960cD88C5f23b0",
+      "agent": "0xcdd23d104AA4C10DE65F4DD0571eDfeC0458699d",
+      "status": "cancelled",
+      "note": "SLICE-202-4 e2e dry-run vault; create tx 0x138958fa0f5ebe73e5c996040c25d0119ff54bba1fdad7bcb66f19efcad2cebc"
+    }
+  ]
+}
