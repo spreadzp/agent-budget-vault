@@ -18,6 +18,8 @@ interface Props {
   cancelled: boolean;
   /** cancel timestamp, if cancelled */
   cancelTime?: bigint;
+  /** show progress bar (default true) */
+  showProgress?: boolean;
 }
 
 function clamp(v: bigint, lo: bigint, hi: bigint): bigint {
@@ -35,6 +37,7 @@ export function VestedTicker({
   totalDeposited,
   cancelled,
   cancelTime,
+  showProgress = true,
 }: Props) {
   const [now, setNow] = useState(() => BigInt(Math.floor(Date.now() / 1000)));
 
@@ -61,26 +64,49 @@ export function VestedTicker({
 
   const liveClaimable = liveVested > claimedRaw ? liveVested - claimedRaw : 0n;
 
+  // Progress bar: pct of totalDeposited that has vested
+  const progressPct =
+    totalDeposited > 0n
+      ? Math.min(100, Number((liveVested * 10000n) / totalDeposited) / 100)
+      : 0;
+
   return (
-    <div className="grid grid-cols-2 gap-3">
-      <div className="rounded-xl bg-[var(--surface-muted)] px-4 py-3">
-        <p className="text-xs text-[var(--muted)] uppercase tracking-widest font-medium mb-0.5">
-          Vested
-        </p>
-        <p className="text-lg font-semibold tabular-nums text-[var(--ink)] display">
-          {formatUsdc(liveVested)}{' '}
-          <span className="text-sm font-normal text-[var(--muted)]">USDC</span>
-        </p>
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl bg-[var(--surface-muted)] px-4 py-3">
+          <p className="text-xs text-[var(--muted)] uppercase tracking-widest font-medium mb-0.5">
+            Vested
+          </p>
+          <p className="text-lg font-semibold tabular-nums text-[var(--ink)] display">
+            {formatUsdc(liveVested)}{' '}
+            <span className="text-sm font-normal text-[var(--muted)]">USDC</span>
+          </p>
+        </div>
+        <div className="rounded-xl bg-[var(--surface-muted)] px-4 py-3">
+          <p className="text-xs text-[var(--muted)] uppercase tracking-widest font-medium mb-0.5">
+            Claimable
+          </p>
+          <p className="text-lg font-semibold tabular-nums text-[var(--ink)] display">
+            {formatUsdc(liveClaimable)}{' '}
+            <span className="text-sm font-normal text-[var(--muted)]">USDC</span>
+          </p>
+        </div>
       </div>
-      <div className="rounded-xl bg-[var(--surface-muted)] px-4 py-3">
-        <p className="text-xs text-[var(--muted)] uppercase tracking-widest font-medium mb-0.5">
-          Claimable
-        </p>
-        <p className="text-lg font-semibold tabular-nums text-[var(--ink)] display">
-          {formatUsdc(liveClaimable)}{' '}
-          <span className="text-sm font-normal text-[var(--muted)]">USDC</span>
-        </p>
-      </div>
+
+      {showProgress && totalDeposited > 0n && (
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-[var(--muted)]">
+            <span>{progressPct.toFixed(1)}% vested</span>
+            <span className="tabular-nums">{formatUsdc(claimedRaw)} claimed</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-[var(--surface-muted)] overflow-hidden">
+            <div
+              className="h-full rounded-full bg-[var(--accent)] transition-none"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

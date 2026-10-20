@@ -1,61 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
   useAccount,
+  usePublicClient,
   useSwitchChain,
 } from 'wagmi';
 import { toast } from 'sonner';
+import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { VAULT_ABI, ARC_TESTNET_CHAIN_ID } from '../contracts';
-import { parseAmount } from '@/onchain-money';
+import { parseAmount, formatUsdc } from '@/onchain-money';
+import { buildTxExplorerUrl } from '@/onchain-facts';
 import { VestedTicker } from './VestedTicker';
 import { TxHashBadge } from './TxHashBadge';
+import { useAgentVault } from '../hooks/useVaultDiscovery';
+import { scanClaimedLogs, type ClaimedLog, type ScanProgress } from '../lib/scanClaimedLogs';
 
-interface PolicyView {
-  owner: string;
-  agent: string;
-  operator: string;
-  agentId: bigint;
-  registry: string;
-  token: string;
-  rate: bigint;
-  startTime: bigint;
-  endTime: bigint;
-  perTxCap: bigint;
-  paused: boolean;
-  cancelled: boolean;
-  vested: bigint;
-  claimed: bigint;
-  claimable: bigint;
-  payees: readonly string[];
-}
+function fmtAddr(a: string) { return `${a.slice(0, 8)}…${a.slice(-4)}`; }
 
 export function AgentPanel() {
-  const { chainId } = useAccount();
+  const { address, chainId } = useAccount();
   const { switchChain } = useSwitchChain();
   const isCorrectChain = chainId === ARC_TESTNET_CHAIN_ID;
+  const client = usePublicClient({ chainId: ARC_TESTNET_CHAIN_ID });
 
-  const [vaultAddr, setVaultAddr] = useState('');
+  // ── Vault discovery ──────────────────────────────────────────────────────
+  const { vaultAddr: discoveredVault, policy, refetch } = useAgentVault(address);
+
+  // Advanced manual override
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [manualVault, setManualVault] = useState('');
+  const vaultAddr = showAdvanced && manualVault ? manualVault : discoveredVault;
+  const activePolicy = policy;
+
+  // ── Claim form ───────────────────────────────────────────────────────────
   const [claimAmt, setClaimAmt] = useState('');
-  const [payeeAddr, setPayeeAddr] = useState('');
+  const [selectedPayee, setSelectedPayee] = useState('');
   const [lastHash, setLastHash] = useState<`0x${string}` | undefined>();
 
-  const validVault = vaultAddr.length > 0 && vaultAddr.startsWith('0x');
-
-  const { data: policy, refetch } = useReadContract({
-    address: (validVault ? vaultAddr : '0x0000000000000000000000000000000000000000') as `0x${string}`,
-    abi: VAULT_ABI,
-    functionName: 'policy',
-    chainId: ARC_TESTNET_CHAIN_ID,
-    query: { enabled: validVault },
-  }) as unknown as { data: PolicyView | undefined; refetch: () => void };
+  // When payees load, pre-select the first one
+  useEffect(() => {
+    if (activePolicy?.payees && activePolicy.payees.length > 0 && !selectedPayee) {
+      setSelectedPayee(activePolicy.payees[0]);
+    }
+  }, [activePolicy?.payees, selectedPayee]);
 
   const { writeContract, isPending } = useWriteContract({
     mutation: {
       onSuccess: (hash) => {
         setLastHash(hash);
-        setTimeout(() => refetch(), 4000);
+        setTimeout(() => {
+          void refetch();
+          void fetchClaims();
+        }, 4000);
       },
       onError: (e) => toast.error(e.message.slice(0, 120)),
     },
@@ -63,16 +60,49 @@ export function AgentPanel() {
 
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: lastHash });
 
+  // ── Claim history ────────────────────────────────────────────────────────
+  const [claims, setClaims] = useState<ClaimedLog[]>([]);
+  const [claimsLoading, setClaimsLoading] = useState(false);
+  const [claimsProgress, setClaimsProgress] = useState<ScanProgress | null>(null);
+  const [claimsFailed, setClaimsFailed] = useState(0);
+
+  const fetchClaims = async () => {
+    if (!vaultAddr || !address || !client) return;
+    setClaimsLoading(true);
+    setClaimsProgress(null);
+    setClaimsFailed(0);
+    try {
+      const { logs, failedCount } = await scanClaimedLogs(
+        client,
+        [vaultAddr as `0x${string}`],
+        {
+          callerFilter: address,
+          onProgress: (p) => setClaimsProgress(p),
+        },
+      );
+      setClaims(logs);
+      setClaimsFailed(failedCount);
+    } finally {
+      setClaimsLoading(false);
+      setClaimsProgress(null);
+    }
+  };
+
+  useEffect(() => {
+    if (vaultAddr && address) { void fetchClaims(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultAddr, address]);
+
   const handleClaim = () => {
     if (!isCorrectChain) { switchChain({ chainId: ARC_TESTNET_CHAIN_ID }); return; }
-    if (!vaultAddr || !claimAmt || !payeeAddr) { toast.error('Fill all claim fields'); return; }
+    if (!vaultAddr || !claimAmt || !selectedPayee) { toast.error('Fill all claim fields'); return; }
     try {
       const parsed = parseAmount(ARC_TESTNET_CHAIN_ID, claimAmt);
       writeContract({
         address: vaultAddr as `0x${string}`,
         abi: VAULT_ABI,
         functionName: 'claim',
-        args: [parsed.raw, payeeAddr as `0x${string}`],
+        args: [parsed.raw, selectedPayee as `0x${string}`],
         chainId: ARC_TESTNET_CHAIN_ID,
       });
       toast.info('Claiming…');
@@ -96,39 +126,58 @@ export function AgentPanel() {
         </div>
       )}
 
+      {/* Vault resolution */}
       <div className={cardCls}>
-        <h3 className="text-sm font-semibold text-[var(--ink)]">Vault Address</h3>
-        <div>
-          <label className={labelCls}>Enter vault address to inspect</label>
-          <input
-            className={inputCls}
-            placeholder="0x vault address"
-            value={vaultAddr}
-            onChange={e => setVaultAddr(e.target.value)}
-          />
-        </div>
+        {discoveredVault ? (
+          <div>
+            <p className="text-xs text-[var(--muted)] mb-1">Your vault</p>
+            <p className="font-mono text-xs text-[var(--ink)]">{discoveredVault}</p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm font-medium text-[var(--ink)]">No vault found</p>
+            <p className="text-xs text-[var(--muted)] mt-1">
+              No vault is registered for your wallet address yet. Ask the owner to create one via the factory.
+            </p>
+          </div>
+        )}
+
+        <button
+          onClick={() => setShowAdvanced(s => !s)}
+          className="flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
+        >
+          {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          Advanced: enter vault address manually
+        </button>
+        {showAdvanced && (
+          <div>
+            <label className={labelCls}>Vault Address</label>
+            <input className={inputCls} placeholder="0x vault address" value={manualVault} onChange={e => setManualVault(e.target.value)} />
+          </div>
+        )}
       </div>
 
-      {policy && (
+      {activePolicy && vaultAddr && (
         <>
-          {/* Ticking vested/claimable display */}
+          {/* Live ticking budget */}
           <div className={cardCls}>
             <h3 className="text-sm font-semibold text-[var(--ink)]">Live Budget</h3>
             <VestedTicker
-              vestedRaw={policy.vested}
-              claimedRaw={policy.claimed}
-              rate={policy.rate}
-              startTime={policy.startTime}
-              endTime={policy.endTime}
-              totalDeposited={policy.vested + (policy.claimable - (policy.vested - policy.claimed))}
-              cancelled={policy.cancelled}
+              vestedRaw={activePolicy.vested}
+              claimedRaw={activePolicy.claimed}
+              rate={activePolicy.rate}
+              startTime={activePolicy.startTime}
+              endTime={activePolicy.endTime}
+              totalDeposited={activePolicy.vested + activePolicy.claimable}
+              cancelled={activePolicy.cancelled}
+              showProgress
             />
-            {(policy.paused || policy.cancelled) && (
-              <div className="flex gap-2 flex-wrap">
-                {policy.paused && (
+            {(activePolicy.paused || activePolicy.cancelled) && (
+              <div className="flex gap-2">
+                {activePolicy.paused && (
                   <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-medium">Paused</span>
                 )}
-                {policy.cancelled && (
+                {activePolicy.cancelled && (
                   <span className="px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-medium">Cancelled</span>
                 )}
               </div>
@@ -139,14 +188,14 @@ export function AgentPanel() {
           <div className={cardCls}>
             <h3 className="text-sm font-semibold text-[var(--ink)]">Schedule</h3>
             <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
-              {[
-                ['Start', policy.startTime > 0n ? new Date(Number(policy.startTime) * 1000).toLocaleString() : '—'],
-                ['End', policy.endTime > 0n ? new Date(Number(policy.endTime) * 1000).toLocaleString() : '—'],
-                ['Rate/s', policy.rate > 0n ? `${(Number(policy.rate) / 1e6).toFixed(8)} USDC` : '—'],
-                ['Per-tx Cap', policy.perTxCap > 0n ? `${(Number(policy.perTxCap) / 1e6).toFixed(2)} USDC` : 'None'],
-                ['Agent ID', policy.agentId.toString()],
-                ['Registry', policy.registry !== '0x0000000000000000000000000000000000000000' ? `${policy.registry.slice(0, 8)}…` : '—'],
-              ].map(([k, v]) => (
+              {([
+                ['Start', activePolicy.startTime > 0n ? new Date(Number(activePolicy.startTime) * 1000).toLocaleString() : '—'],
+                ['End', activePolicy.endTime > 0n ? new Date(Number(activePolicy.endTime) * 1000).toLocaleString() : '—'],
+                ['Rate/s', activePolicy.rate > 0n ? `${(Number(activePolicy.rate) / 1e6).toFixed(8)} USDC` : '—'],
+                ['Per-tx Cap', activePolicy.perTxCap > 0n ? `${formatUsdc(activePolicy.perTxCap)} USDC` : 'None'],
+                ['Agent ID', activePolicy.agentId.toString()],
+                ['Operator', activePolicy.operator !== '0x0000000000000000000000000000000000000000' ? fmtAddr(activePolicy.operator) : 'None'],
+              ] as [string, string][]).map(([k, v]) => (
                 <React.Fragment key={k}>
                   <span className="text-[var(--muted)] text-xs font-medium">{k}</span>
                   <span className="text-[var(--ink)] text-xs tabular-nums font-mono">{v}</span>
@@ -154,18 +203,6 @@ export function AgentPanel() {
               ))}
             </div>
           </div>
-
-          {/* Payees */}
-          {policy.payees.length > 0 && (
-            <div className={cardCls}>
-              <h3 className="text-sm font-semibold text-[var(--ink)]">Allowed Payees</h3>
-              <div className="space-y-1">
-                {policy.payees.map((p) => (
-                  <div key={p} className="px-3 py-1.5 rounded-lg bg-[var(--surface-muted)] font-mono text-xs text-[var(--ink)]">{p}</div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Claim */}
           <div className={cardCls}>
@@ -176,22 +213,73 @@ export function AgentPanel() {
                 <input className={inputCls} type="number" placeholder="10" value={claimAmt} onChange={e => setClaimAmt(e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Payee (must be allowlisted)</label>
-                <input className={inputCls} placeholder="0x…" value={payeeAddr} onChange={e => setPayeeAddr(e.target.value)} />
-                {payeeAddr && policy.payees.length > 0 && (
-                  <p className={`text-xs mt-1 ${policy.payees.map(p => p.toLowerCase()).includes(payeeAddr.toLowerCase()) ? 'text-emerald-600' : 'text-red-500'}`}>
-                    {policy.payees.map(p => p.toLowerCase()).includes(payeeAddr.toLowerCase()) ? 'Payee is allowlisted' : 'Payee NOT in allowlist'}
-                  </p>
+                <label className={labelCls}>Send to</label>
+                {activePolicy.payees.length > 0 ? (
+                  <select
+                    className={inputCls}
+                    value={selectedPayee}
+                    onChange={e => setSelectedPayee(e.target.value)}
+                  >
+                    {activePolicy.payees.map(p => (
+                      <option key={p} value={p}>{fmtAddr(p)}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-xs text-amber-600 mt-1">No payees on allowlist. Owner must add one first.</p>
                 )}
               </div>
               <button
                 className={btnPrimary}
                 onClick={handleClaim}
-                disabled={isBusy || policy.paused}
+                disabled={isBusy || activePolicy.paused || activePolicy.payees.length === 0}
               >
-                {isBusy ? 'Confirm in wallet…' : policy.paused ? 'Vault is paused' : 'Claim'}
+                {isBusy ? 'Confirm in wallet…' : activePolicy.paused ? 'Vault is paused' : 'Claim'}
               </button>
             </div>
+          </div>
+
+          {/* My claims history */}
+          <div className={cardCls}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-[var(--ink)]">My Claims</h3>
+              {claims.length > 0 && (
+                <span className="text-xs tabular-nums text-[var(--muted)]">
+                  Total: {formatUsdc(claims.reduce((s, c) => s + c.amount, 0n))} USDC
+                </span>
+              )}
+            </div>
+            {claimsLoading && (
+              <p className="text-xs text-[var(--muted)]">
+                {claimsProgress
+                  ? `Scanning blocks ${claimsProgress.fromBlock.toString()}…${claimsProgress.toBlock.toString()} of ${claimsProgress.headBlock.toString()}`
+                  : 'Scanning…'}
+              </p>
+            )}
+            {claimsFailed > 0 && (
+              <p className="text-xs text-amber-600">{claimsFailed} chunk{claimsFailed !== 1 ? 's' : ''} could not be scanned</p>
+            )}
+            {!claimsLoading && claims.length === 0 && claimsFailed === 0 && (
+              <p className="text-xs text-[var(--muted)]">No claims found in recent history.</p>
+            )}
+            {claims.map((c, i) => (
+              <div key={i} className="rounded-xl bg-[var(--surface-muted)] px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-mono text-[var(--ink)]">To: {fmtAddr(c.payee)}</p>
+                  <p className="text-xs text-[var(--muted)] mt-0.5">Block {c.blockNumber.toString()}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-semibold tabular-nums text-[var(--ink)]">{formatUsdc(c.amount)} USDC</p>
+                  <a
+                    href={buildTxExplorerUrl(ARC_TESTNET_CHAIN_ID, c.txHash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
+                  >
+                    View <ExternalLink size={10} />
+                  </a>
+                </div>
+              </div>
+            ))}
           </div>
         </>
       )}
