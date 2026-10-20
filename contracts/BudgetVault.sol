@@ -41,7 +41,6 @@ contract BudgetVault is ReentrancyGuard {
     uint256 public rate;
     uint256 public startTime;
     uint256 public endTime;
-    uint256 public streamed;
     uint256 public claimed;
     bool public paused;
     bool public cancelled;
@@ -80,12 +79,11 @@ contract BudgetVault is ReentrancyGuard {
         require(amount > 0, "ZeroAmount");
         require(!cancelled, "Cancelled");
 
-        _syncStreamed();
-
         token.safeTransferFrom(msg.sender, address(this), amount);
         _totalDeposited += amount;
 
         if (startTime == 0) {
+            // First deposit: mode is ignored, a fresh 30-day stream is derived.
             startTime = block.timestamp;
             if (rate == 0) {
                 rate = amount / 30 days;
@@ -94,12 +92,22 @@ contract BudgetVault is ReentrancyGuard {
             // ceil division: extension covers the whole deposit, no dust locked
             endTime = startTime + (amount + rate - 1) / rate;
         } else if (mode == DepositMode.EXTEND) {
-            require(endTime > block.timestamp, "vault expired");
-            endTime += (amount + rate - 1) / rate;
+            if (endTime <= block.timestamp) {
+                // Restart an expired stream: keep vested() continuous by
+                // anchoring startTime so vested(now) is unchanged, then vest
+                // the new deposit over a fresh window from now.
+                startTime = block.timestamp - (_vestedAt(block.timestamp) / rate);
+                endTime = block.timestamp + (amount + rate - 1) / rate;
+            } else {
+                endTime += (amount + rate - 1) / rate;
+            }
         } else {
             require(endTime > block.timestamp, "vault expired");
             uint256 remaining = endTime - block.timestamp;
-            rate = (_totalDeposited - claimed) / remaining;
+            // ceil so the unclaimed remainder fully vests before endTime;
+            // a rate that rounds to 0 would freeze vesting forever.
+            rate = (_totalDeposited - claimed + remaining - 1) / remaining;
+            require(rate > 0, "RateTooLow");
         }
 
         emit Deposited(msg.sender, amount, mode, rate, endTime);
@@ -119,7 +127,6 @@ contract BudgetVault is ReentrancyGuard {
         require(amount <= c, "InsufficientClaimable");
 
         claimed += amount;
-        _syncStreamed();
 
         token.safeTransfer(payee, amount);
 
@@ -172,10 +179,8 @@ contract BudgetVault is ReentrancyGuard {
         emit Unpaused();
     }
 
-    function cancel() external onlyOwner {
+    function cancel() external onlyOwner nonReentrant {
         require(!cancelled, "AlreadyCancelled");
-
-        _syncStreamed();
 
         cancelled = true;
         cancelTime = block.timestamp;
@@ -183,7 +188,9 @@ contract BudgetVault is ReentrancyGuard {
         uint256 v = _vestedAt(cancelTime);
         uint256 unvested = _totalDeposited > v ? _totalDeposited - v : 0;
 
-        if (unvested > 0 && token.balanceOf(address(this)) >= unvested) {
+        // Transfer unconditionally: balance == _totalDeposited - claimed holds
+        // by construction, and a silent skip would lock funds forever.
+        if (unvested > 0) {
             token.safeTransfer(owner, unvested);
         }
 
@@ -259,12 +266,5 @@ contract BudgetVault is ReentrancyGuard {
 
         uint256 accrued = rate * elapsed;
         return accrued < _totalDeposited ? accrued : _totalDeposited;
-    }
-
-    function _syncStreamed() internal {
-        uint256 v = vested();
-        if (v > streamed) {
-            streamed = v;
-        }
     }
 }

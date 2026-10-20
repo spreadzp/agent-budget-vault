@@ -82,8 +82,40 @@ contract BudgetVaultHardeningTest is Test {
         assertEq(vault.vested(), ONE_HUNDRED + topUp);
     }
 
-    // F3: EXTEND on an expired vault must revert (new funds would vest instantly)
-    function test_Deposit_Extend_RevertIfExpired() public {
+    // F3/H-1: EXTEND on an expired vault restarts the stream from now,
+    // preserving vested continuity (no instant vest of the new deposit)
+    function test_Deposit_Extend_RestartsExpiredVault() public {
+        vm.prank(owner);
+        vault.deposit(ONE_HUNDRED, BudgetVault.DepositMode.EXTEND);
+        (, uint256 endTime, uint256 rate1,,,) = vault.schedule();
+
+        // claim part of the fully vested amount after expiry
+        vm.warp(endTime + 1);
+        vm.prank(agent);
+        vault.claim(40e6, payee1);
+        uint256 vestedAtExpiry = vault.vested();
+
+        // restart via EXTEND — must not revert
+        vm.prank(owner);
+        vault.deposit(ONE_HUNDRED, BudgetVault.DepositMode.EXTEND);
+
+        (, uint256 endTime2, uint256 rate2,,,) = vault.schedule();
+        assertEq(rate2, rate1, "restart keeps the rate");
+        assertGt(endTime2, block.timestamp, "new window starts from now");
+
+        // vested continuity: no jump (dust < 1 rate-unit tolerated)
+        uint256 vNow = vault.vested();
+        assertGe(vNow, vestedAtExpiry, "vested must not drop");
+        assertLe(vNow, vestedAtExpiry + rate1, "vested must not jump");
+
+        // everything vests by the new endTime — nothing locked
+        vm.warp(endTime2 + 1);
+        assertEq(vault.vested(), 2 * ONE_HUNDRED);
+        assertEq(vault.claimable(), 2 * ONE_HUNDRED - 40e6);
+    }
+
+    // H-1: RAISE_RATE on an expired vault still reverts (no window to recompute over)
+    function test_Deposit_RaiseRate_RevertIfExpired() public {
         vm.prank(owner);
         vault.deposit(ONE_HUNDRED, BudgetVault.DepositMode.EXTEND);
         (, uint256 endTime,,,,) = vault.schedule();
@@ -91,7 +123,7 @@ contract BudgetVaultHardeningTest is Test {
         vm.warp(endTime + 1);
         vm.prank(owner);
         vm.expectRevert("vault expired");
-        vault.deposit(ONE_HUNDRED, BudgetVault.DepositMode.EXTEND);
+        vault.deposit(ONE_HUNDRED, BudgetVault.DepositMode.RAISE_RATE);
     }
 
     // EXTEND while active must not change already-vested amount
@@ -143,6 +175,51 @@ contract BudgetVaultHardeningTest is Test {
         vm.prank(owner);
         vm.expectRevert("ZeroAddress");
         factory.createVault(owner, address(0), 1, address(0), operator_);
+    }
+
+    // C-1 chain: cancel after partial claims must still pay out the exact
+    // unvested remainder (no silent skip when balance < _totalDeposited)
+    function test_Cancel_ExactUnvested_AfterPartialClaim() public {
+        vm.prank(owner);
+        vault.deposit(ONE_HUNDRED, BudgetVault.DepositMode.EXTEND);
+        (, uint256 endTime,,,,) = vault.schedule();
+
+        uint256 mid = block.timestamp + (endTime - block.timestamp) / 2;
+        vm.warp(mid);
+        vm.prank(agent);
+        vault.claim(10e6, payee1);
+
+        uint256 vestedAtCancel = vault.vested();
+        uint256 ownerBefore = usdc.balanceOf(owner);
+        vm.prank(owner);
+        vault.cancel();
+
+        assertEq(
+            usdc.balanceOf(owner) - ownerBefore,
+            ONE_HUNDRED - vestedAtCancel,
+            "owner must receive exact unvested remainder"
+        );
+        // vested remainder stays claimable post-cancel
+        assertEq(vault.claimable(), vestedAtCancel - 10e6);
+    }
+
+    // C-2: RAISE_RATE must ceil-divide so the unclaimed remainder fully vests
+    function test_Deposit_RaiseRate_NoUnvestedResidue() public {
+        vm.prank(owner);
+        vault.deposit(ONE_HUNDRED, BudgetVault.DepositMode.EXTEND);
+        (, uint256 endTime,,,,) = vault.schedule();
+
+        uint256 mid = block.timestamp + (endTime - block.timestamp) / 2;
+        vm.warp(mid);
+        vm.prank(agent);
+        vault.claim(10e6, payee1);
+
+        // odd-sized top-up makes (totalDeposited - claimed) non-divisible
+        vm.prank(owner);
+        vault.deposit(7e6 + 777, BudgetVault.DepositMode.RAISE_RATE);
+
+        vm.warp(endTime + 1);
+        assertEq(vault.vested(), ONE_HUNDRED + 7e6 + 777, "all must vest");
     }
 
     // F6: removePayee on a non-listed address emits nothing
