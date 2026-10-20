@@ -18,6 +18,7 @@ contract BudgetVaultFactory {
     );
 
     constructor(address _token) {
+        require(_token != address(0), "ZeroAddress");
         token = _token;
     }
 
@@ -28,6 +29,8 @@ contract BudgetVaultFactory {
         address registry,
         address operator
     ) external returns (address vault) {
+        require(owner != address(0) && agent != address(0), "ZeroAddress");
+        require(vaultOf[agent] == address(0), "VaultExists");
         vault = address(new BudgetVault(owner, agent, agentId, registry, operator, token));
         vaults.push(vault);
         vaultOf[agent] = vault;

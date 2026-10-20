@@ -67,6 +67,7 @@ contract BudgetVault is ReentrancyGuard {
     }
 
     constructor(address _owner, address _agent, uint256 _agentId, address _registry, address _operator, address _token) {
+        require(_owner != address(0) && _agent != address(0) && _token != address(0), "ZeroAddress");
         owner = _owner;
         agent = _agent;
         agentId = _agentId;
@@ -88,18 +89,13 @@ contract BudgetVault is ReentrancyGuard {
             startTime = block.timestamp;
             if (rate == 0) {
                 rate = amount / 30 days;
+                require(rate > 0, "AmountTooSmall");
             }
-            if (rate > 0) {
-                endTime = startTime + (amount / rate);
-            } else {
-                endTime = startTime + 30 days;
-            }
+            // ceil division: extension covers the whole deposit, no dust locked
+            endTime = startTime + (amount + rate - 1) / rate;
         } else if (mode == DepositMode.EXTEND) {
-            if (rate > 0) {
-                endTime += amount / rate;
-            } else {
-                endTime += 30 days;
-            }
+            require(endTime > block.timestamp, "vault expired");
+            endTime += (amount + rate - 1) / rate;
         } else {
             require(endTime > block.timestamp, "vault expired");
             uint256 remaining = endTime - block.timestamp;
@@ -150,8 +146,8 @@ contract BudgetVault is ReentrancyGuard {
                     break;
                 }
             }
+            emit PayeeRemoved(payee);
         }
-        emit PayeeRemoved(payee);
     }
 
     function setOperator(address _operator) external onlyOwner {
