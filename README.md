@@ -52,6 +52,23 @@ The `operator` slot is designed for a `SignedIntent` push-payment contract: inst
 
 ---
 
+## Contracts (Arc Mainnet — live)
+
+| Contract | Address | Explorer |
+|---|---|---|
+| `BudgetVaultFactory` | `0x5D1a014e1FFE3b777F0946C2dd75A7d3aecdacA4` | [View](https://explorer.arc.io/address/0x5D1a014e1FFE3b777F0946C2dd75A7d3aecdacA4) |
+| `BudgetVault` (demo, agentId 2) | `0x2860258CAf3e21c65517233aBa1e876D16D4Ff52` | [View](https://explorer.arc.io/address/0x2860258CAf3e21c65517233aBa1e876D16D4Ff52) |
+
+**Real USDC lifecycle on mainnet** (executed 2026-10-20, see [`docs/mainnet-flow.md`](docs/mainnet-flow.md)):
+
+| Action | Tx |
+|---|---|
+| approve 3 USDC | [`0xfb313a…b1aa`](https://explorer.arc.io/tx/0xfb313a05825556aa0b4773a47fb1f2cc1587a20edb835e65d7f1909156e0b1aa) |
+| deposit 3 USDC | [`0xaf0b2d…5a56`](https://explorer.arc.io/tx/0xaf0b2dd109690824f7d573df2563eb83b49fe2cb901952fccd4c1e98119d5a56) |
+| addPayee (vendor) | [`0x92a234…3787`](https://explorer.arc.io/tx/0x92a234f6c6ad1152bf64911a5aa0a312eacf8beb49c89189a85c6b7833073787) |
+| setPerTxCap 1 USDC | [`0xc927d0…4a54`](https://explorer.arc.io/tx/0xc927d0ac15518b31a05855ab2a8de7100123b90f562bb9bf0e760990f1194a54) |
+| **claim → vendor (+55 units)** | [`0xab1286…013d`](https://explorer.arc.io/tx/0xab1286328863f5ec4dbb9b040587114fc3966b40506dfc2feb5a85a375d9013d) |
+
 ## Contracts (Arc Testnet)
 
 | Contract | Address | Explorer |
@@ -76,6 +93,7 @@ Copy `.env.example` to `.env` and fill in:
 | Variable | Description |
 |---|---|
 | `VITE_FACTORY_ADDRESS` | Deployed `BudgetVaultFactory` address (set after deploy) |
+| `VITE_CHAIN_ID` | `5042002` testnet (default) or `5042` for Arc mainnet |
 | `USDC_TOKEN_ADDRESS` | USDC ERC-20 on target chain (see values below) |
 | `PRIVATE_KEY` | Deployer private key for forge-script self-deploy |
 
@@ -131,11 +149,22 @@ The single-page app has three role views:
 
 Connect a wallet on Arc Testnet (get test USDC from the **Get test USDC** button in the Arc Studio sidebar), create a vault, fund it, and switch between role views to demo the full flow.
 
+**Mainnet mode:** copy `.env.mainnet` → `.env` (sets `VITE_CHAIN_ID=5042` and the mainnet factory), restart `bun run dev`, and the app targets Arc mainnet — network badge, explorer links, and vault registry all switch automatically.
+
 ---
+
+## Demo Video
+
+<!-- VIDEO_LINK -->
+Three-actor walkthrough: owner creates & funds a vault, allowlists a vendor, the agent claims USDC to it, and the vendor view shows the incoming payment — verified on Arc mainnet (chainId 5042).
+
+## Built with Arc Studio
+
+This project was prototyped with [Arc Studio](https://arc.studio) — see [`docs/arc-studio-prompt.md`](docs/arc-studio-prompt.md) for the original scaffold prompt and [`docs/arc-studio-frontend-prompt.md`](docs/arc-studio-frontend-prompt.md) for the frontend iteration. Contract code was hardened through Forge tests plus an external adversarial review ([`docs/review/frontend-REVIEW.md`](docs/review/frontend-REVIEW.md), [`docs/audit.md`](docs/audit.md)).
 
 ## Security Notes
 
-- This is a demo/testnet deployment. Do not deploy to mainnet without a professional audit.
+- This is a **demo deployment** — it runs live on Arc mainnet with minimal real funding (3 USDC, per-tx cap 1 USDC, dedicated demo owner). Production use needs a professional audit.
 - The `onlyOwner` modifier is a simple address check; production use should consider `Ownable2Step` (two-step ownership transfer).
 - Integer division in rate calculation means at stream end the vested amount may be `rate * duration` rather than exactly `totalDeposited` (up to a few USDC units dust — see test comments).
 - The `cancel` path returns unvested tokens to `owner`; verify `token.balanceOf(address(this)) >= unvested` before transfer (already implemented).
