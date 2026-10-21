@@ -159,7 +159,7 @@ Connect a wallet on Arc Testnet (get test USDC from the **Get test USDC** button
 <!-- VIDEO_LINK -->
 Three-actor walkthrough: owner creates & funds a vault, allowlists a vendor, the agent claims USDC to it, and the vendor view shows the incoming payment — verified on Arc mainnet (chainId 5042).
 
-Recorded 2026-10-20 (~3 min): owner vault view → agent submits a **live** `claim` (tx [`0x99a641…0c6e`](https://explorer.arc.io/tx/0x99a6418d86ac4cb8477a44402bd076bca45fa7d205b04244fce3734fa97d0c6e)) → vendor scan shows the new payment → explorer confirms `Success`. Raw capture: `docs/EPICS/202-agent-budget-vault/agent-allowance-demo.webm`; hosted link lands here once uploaded.
+Produced slide videos (~3 min each, EN + RU voiceover, captions): title → lifecycle diagram → owner/agent/vendor views → live claim on `explorer.arc.io` → outro. Files: `docs/video/agent-allowance-demo/agent-allowance-demo-{en,ru}.mp4` (pipeline + SHOTLIST in the same dir). Includes live claim tx [`0x5a29b4…09b5`](https://explorer.arc.io/tx/0x5a29b45d133338516ca88ad96017bc8ec79a8ef206b6d5767a74956f6c8509b5).
 
 ## Built with Arc Studio
 

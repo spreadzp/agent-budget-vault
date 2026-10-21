@@ -34,8 +34,9 @@
       "payee": "0x9a664574282b61d31f5A4f22DE63c8Ad248e95A5",
       "claimTx": "0xab1286328863f5ec4dbb9b040587114fc3966b40506dfc2feb5a85a375d9013d",
       "claim2Tx": "0x99a6418d86ac4cb8477a44402bd076bca45fa7d205b04244fce3734fa97d0c6e",
-      "claimedUnits": 85,
-      "payeeBalanceDelta": "99020 -> 99105",
+      "claim3Tx": "0x5a29b45d133338516ca88ad96017bc8ec79a8ef206b6d5767a74956f6c8509b5",
+      "claimedUnits": 115,
+      "payeeBalanceDelta": "99020 -> 99135",
       "note": "SLICE-202-5 mainnet demo vault — funded 3 USDC, first real claim executed 2026-10-20. Funding consolidated from ARC_OPS/ARC_VENUE_PROVIDER/ARC_EVALUATOR wallets + user top-up. See docs/mainnet-flow.md"
     }
   ]
