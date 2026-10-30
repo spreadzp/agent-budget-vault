@@ -36,9 +36,35 @@ Scope: `contracts/BudgetVault.sol`, `contracts/BudgetVaultFactory.sol`.
 | M-5 | Medium | `vaults[]` unbounded array | Accepted: off-chain indexed getter only; no on-chain iteration consumer |
 | M-6 | Medium | Ceil-div consistency first-deposit vs EXTEND | Verified consistent post-fix |
 
+## Invariants (contract properties that must always hold)
+
+Added per `.windsurf/workflows/contract-security-testing.md` §1. Every
+mutating function/branch must preserve all applicable invariants —
+see matrix rule §2 of that workflow.
+
+- **INV-1 Monotonicity**: `vested(t2) >= vested(t1)` for `t2 > t1` (same contract state).
+- **INV-2 Bounded**: `vested() <= totalDeposited` always.
+- **INV-3 Deposit continuity**: `deposit()` (any mode) must not change
+  `vested(now)` or `claimable(now)` — no instant unlock on top-up.
+- **INV-4 Claim bookkeeping**: `claimable() = max(0, vested - claimed)`;
+  `claimed` only increases.
+- **INV-5 Authorization**: `claim()` only by agent/operator, only to
+  allowlisted payees, only within `claimable` (and `perTxCap` when set).
+- **INV-6 Cancel split**: `cancel()` pays owner exactly
+  `totalDeposited - vested(cancelTime)`; `vested()` freezes after.
+- **INV-7 Conservation**: `token.balanceOf(vault) == totalDeposited - sum(claims)`.
+
+## External reports (post-audit)
+
+| # | Severity | Finding | Resolution |
+|---|----------|---------|-----------|
+| H-4 | High | `RAISE_RATE` applies the new rate retroactively: `rate` recomputed over remaining time but `startTime` left unchanged → `vested = rate * elapsed` jumps at deposit; unclaimed case can unlock the whole balance in the same block; `cancel()` then under-returns unvested to owner | Re-anchor `startTime` (same pattern as EXTEND-expired): `startTime = now - vestedNow/newRate` computed with the old rate, capped by pre-deposit `totalDeposited`. PoC regression tests added. Reported by KupiaSec via email, 2026-10-30 (`docs/PROPOSITIONS/AUDIT/3010.md`) |
+
 ## Test coverage
 
-46 forge tests (2 suites): vesting linearity, claim auth (agent/operator/
+50 forge tests (2 suites): vesting linearity, claim auth (agent/operator/
 nobody), allowlist, perTxCap, pause/unpause, cancel split + exact remainder
 after partial claim, post-cancel claimability, EXTEND restart continuity,
-RAISE_RATE ceil, zero-addr guards, duplicate-agent revert, removePayee events.
+RAISE_RATE ceil + H-4 vested-continuity (PoC from KupiaSec report:
+claimed/unclaimed/cancel-under-return + stateful fuzz invariant),
+zero-addr guards, duplicate-agent revert, removePayee events.

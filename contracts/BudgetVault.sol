@@ -103,11 +103,21 @@ contract BudgetVault is ReentrancyGuard {
             }
         } else {
             require(endTime > block.timestamp, "vault expired");
+            // H-4: vested accrued so far must be preserved — re-anchor
+            // startTime so the new rate applies only from now on (same
+            // pattern as EXTEND on an expired stream). Cap at the
+            // pre-deposit total so an already-fully-vested edge cannot jump.
+            uint256 vestedNow = _vestedAt(block.timestamp);
+            uint256 prevTotal = _totalDeposited - amount;
+            if (vestedNow > prevTotal) {
+                vestedNow = prevTotal;
+            }
             uint256 remaining = endTime - block.timestamp;
             // ceil so the unclaimed remainder fully vests before endTime;
             // a rate that rounds to 0 would freeze vesting forever.
             rate = (_totalDeposited - claimed + remaining - 1) / remaining;
             require(rate > 0, "RateTooLow");
+            startTime = block.timestamp - (vestedNow / rate);
         }
 
         emit Deposited(msg.sender, amount, mode, rate, endTime);

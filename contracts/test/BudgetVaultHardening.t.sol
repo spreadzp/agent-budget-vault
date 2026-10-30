@@ -229,4 +229,118 @@ contract BudgetVaultHardeningTest is Test {
         vault.removePayee(address(0xBEEF));
         assertEq(vm.getRecordedLogs().length, 0, "no event for non-payee");
     }
+
+    // H-4 (reported by KupiaSec, 2026-10-30): RAISE_RATE must re-anchor
+    // startTime — the new rate applies only from now on, never retroactively.
+    // PoC from the report: 30-day stream, agent claimed at day 15, owner
+    // raises the budget — nothing may unlock at the moment of the top-up.
+    function test_Deposit_RaiseRate_PreservesVested() public {
+        // amount = 2592000 wei => rate = 1 wei/sec, exact 30-day stream
+        uint256 amount = 2_592_000;
+        vm.prank(owner);
+        vault.deposit(amount, BudgetVault.DepositMode.EXTEND);
+        (, uint256 endTime, uint256 rate1,,,) = vault.schedule();
+        assertEq(rate1, 1);
+
+        // day 15: exactly half vested, agent claims it all
+        vm.warp(block.timestamp + 15 days);
+        uint256 vestedMid = vault.vested();
+        assertEq(vestedMid, 1_296_000);
+        vm.prank(agent);
+        vault.claim(vestedMid, payee1);
+        assertEq(vault.claimable(), 0);
+
+        // owner raises the budget with an equal top-up
+        vm.prank(owner);
+        vault.deposit(amount, BudgetVault.DepositMode.RAISE_RATE);
+
+        // INV-3: vested/claimable must be continuous — no instant unlock
+        assertEq(vault.vested(), vestedMid, "vested must not jump");
+        assertEq(vault.claimable(), 0, "top-up must not be claimable at once");
+
+        // the full 2 * amount still vests by the original endTime
+        vm.warp(endTime + 1);
+        assertEq(vault.vested(), 2 * amount);
+        assertEq(vault.claimable(), 2 * amount - vestedMid);
+    }
+
+    // H-4: when the agent never claimed, the whole balance must NOT vest
+    // in the same block as the top-up.
+    function test_Deposit_RaiseRate_UnclaimedNoInstantVest() public {
+        uint256 amount = 2_592_000;
+        vm.prank(owner);
+        vault.deposit(amount, BudgetVault.DepositMode.EXTEND);
+        (, uint256 endTime,,,,) = vault.schedule();
+
+        vm.warp(block.timestamp + 15 days);
+        uint256 vestedMid = vault.vested();
+        assertEq(vault.claimable(), vestedMid);
+
+        vm.prank(owner);
+        vault.deposit(amount, BudgetVault.DepositMode.RAISE_RATE);
+
+        assertEq(vault.vested(), vestedMid, "vested must not jump");
+        assertLt(vault.claimable(), 2 * amount, "must not all unlock at once");
+
+        vm.warp(endTime + 1);
+        assertEq(vault.vested(), 2 * amount);
+    }
+
+    // H-4: cancel() right after RAISE_RATE must return the true unvested
+    // remainder — the retroactive jump must not shrink the owner's share.
+    function test_Cancel_AfterRaiseRate_TrueUnvested() public {
+        uint256 amount = 2_592_000;
+        vm.prank(owner);
+        vault.deposit(amount, BudgetVault.DepositMode.EXTEND);
+
+        vm.warp(block.timestamp + 15 days);
+        uint256 vestedMid = vault.vested();
+
+        vm.prank(owner);
+        vault.deposit(amount, BudgetVault.DepositMode.RAISE_RATE);
+
+        uint256 ownerBefore = usdc.balanceOf(owner);
+        vm.prank(owner);
+        vault.cancel();
+
+        assertEq(
+            usdc.balanceOf(owner) - ownerBefore,
+            2 * amount - vestedMid,
+            "owner must receive the true unvested remainder"
+        );
+    }
+
+    // H-4 invariant fuzz: a RAISE_RATE deposit must never increase
+    // claimable/vested at the moment of the call (any time, any top-up).
+    function testFuzz_Deposit_RaiseRate_VestedContinuity(uint256 timeDelta, uint256 topUp) public {
+        vm.prank(owner);
+        vault.deposit(ONE_HUNDRED, BudgetVault.DepositMode.EXTEND);
+        (, uint256 endTime,,,,) = vault.schedule();
+
+        uint256 remaining = endTime - block.timestamp;
+        timeDelta = bound(timeDelta, 1, remaining - 1);
+        vm.warp(block.timestamp + timeDelta);
+
+        topUp = bound(topUp, 1e6, 9_000e6);
+        uint256 vestedBefore = vault.vested();
+        uint256 claimableBefore = vault.claimable();
+
+        vm.prank(owner);
+        vault.deposit(topUp, BudgetVault.DepositMode.RAISE_RATE);
+
+        (, , uint256 rate2,,,) = vault.schedule();
+        // never jumps up; any drop is bounded by one newRate-second of
+        // floor rounding on the re-anchor
+        assertLe(vault.vested(), vestedBefore, "vested must not jump up");
+        assertLe(
+            vestedBefore - vault.vested(),
+            rate2,
+            "vested drop exceeds anchor rounding"
+        );
+        assertLe(
+            vault.claimable(),
+            claimableBefore,
+            "claimable must not increase on top-up"
+        );
+    }
 }
