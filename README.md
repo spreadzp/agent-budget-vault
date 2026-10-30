@@ -56,10 +56,22 @@ The `operator` slot is designed for a `SignedIntent` push-payment contract: inst
 
 | Contract | Address | Explorer |
 |---|---|---|
-| `BudgetVaultFactory` | `0x5D1a014e1FFE3b777F0946C2dd75A7d3aecdacA4` | [View](https://explorer.arc.io/address/0x5D1a014e1FFE3b777F0946C2dd75A7d3aecdacA4) |
-| `BudgetVault` (demo, agentId 2) | `0x2860258CAf3e21c65517233aBa1e876D16D4Ff52` | [View](https://explorer.arc.io/address/0x2860258CAf3e21c65517233aBa1e876D16D4Ff52) |
+| `BudgetVaultFactory` | `0xebd0b7ad8f2135ec80f1c09a6c0c25db6e79f7aa` | [View](https://explorer.arc.io/address/0xebd0b7ad8f2135ec80f1c09a6c0c25db6e79f7aa) |
+| `BudgetVault` (demo, agentId 2) | `0xD8936DC67D5B561fb673429bc94Ef61cA1a860Ce` | [View](https://explorer.arc.io/address/0xD8936DC67D5B561fb673429bc94Ef61cA1a860Ce) |
 
-**Real USDC lifecycle on mainnet** (executed 2026-10-20, see [`docs/mainnet-flow.md`](docs/mainnet-flow.md)):
+> **2026-10-30 — H-4 fix redeploy.** New factory + demo vault run the
+> RAISE_RATE vested-continuity fix (see [`docs/audit.md`](docs/audit.md),
+> finding H-4 reported by KupiaSec). Legacy factory
+> `0x5D1a014e1FFE3b777F0946C2dd75A7d3aecdacA4` and vault
+> `0x2860258CAf3e21c65517233aBa1e876D16D4Ff52` were sunset: owner recovered
+> the unvested remainder via `cancel()`
+> ([tx](https://explorer.arc.io/tx/0x7f8a04b01819cd2696f6f12687304beee3d0a53162349e69c8b8b48640ef53d1));
+> the agent's vested balance stays claimable on the legacy vault.
+> Fix verified live on Arc mainnet: a RAISE_RATE top-up that doubled the
+> rate (1 → 2 wei/s) kept `vested()` continuous — 132 → 136 wei, no jump
+> ([tx](https://explorer.arc.io/tx/0x3c8d188646d27be0238fc29a5bcf64fa3bca503f9480572ae5eb7f298d3a7656)).
+
+**Real USDC lifecycle on mainnet** (executed 2026-10-20 on the legacy vault, see [`docs/mainnet-flow.md`](docs/mainnet-flow.md)):
 
 | Action | Tx |
 |---|---|
