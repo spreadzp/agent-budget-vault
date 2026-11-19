@@ -1,0 +1,17 @@
+{
+  "slice": "254-2",
+  "at": "2026-11-19T21:38:34.604Z",
+  "chainId": 5042002,
+  "vault": "0x1eD696AfE80770E5662A17f8365e9e0b1AbA26AE",
+  "txHash": "0x85faa21699d7961edc01f007888092b3524bfc0a694fde9f7a0db4236dcb1676",
+  "reused": false,
+  "signer": "0x9264365408D363E7f142828f063077d7ab7C41d9",
+  "policy": {
+    "owner": "0x9264365408D363E7f142828f063077d7ab7C41d9",
+    "agent": "0x9264365408D363E7f142828f063077d7ab7C41d9",
+    "agentId": "254",
+    "token": "0x3600000000000000000000000000000000000000",
+    "cancelled": false
+  },
+  "postChecks": "ok"
+}
