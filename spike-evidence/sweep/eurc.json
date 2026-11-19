@@ -1,0 +1,1265 @@
+{
+  "slice": "254-3",
+  "scope": "e2e",
+  "chainId": 5042,
+  "tokenIn": {
+    "symbol": "EURC",
+    "address": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+    "decimals": 6
+  },
+  "tokenOut": {
+    "symbol": "USDC",
+    "address": "0x3600000000000000000000000000000000000000",
+    "decimals": 6
+  },
+  "slippageBps": 50,
+  "sizes": [
+    "5",
+    "25",
+    "100",
+    "500"
+  ],
+  "sdkVersion": "1.2.1",
+  "gitCommit": "2465b74e7723d350b53919f097c92dd78b28d644",
+  "generatedAt": "2026-11-19T21:41:26.872Z",
+  "runs": [
+    {
+      "size": "5",
+      "amountIn": "5000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "5485465",
+      "amountOutMin": "5458037",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 1895,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117483",
+      "requestId": "0x8123cc2d943143bd95859cffe4e1a9540f6bf47f87db404fb9c5f16668098e74",
+      "quoteTs": 1795124478146,
+      "deviationRatio": "-0.00036348",
+      "providers": [
+        "TOPAZCL"
+      ],
+      "paths": [
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "5000000",
+          "amount_out": "5485465"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0x8123cc2d943143bd95859cffe4e1a9540f6bf47f87db404fb9c5f16668098e74",
+        "quote_ts": 1795124478146,
+        "amount_in": "5000000",
+        "requested_amount_in": "5000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "5485465",
+        "deviation_ratio": "-0.00036348",
+        "paths": [
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "5000000",
+            "amount_out": "5485465"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "5",
+      "amountIn": "5000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "5485465",
+      "amountOutMin": "5458037",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 701,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117483",
+      "requestId": "0xf176e1b3b320401591648fc417472a9c927c9b0fd18c45d68877c2804360ead2",
+      "quoteTs": 1795124478828,
+      "deviationRatio": "-0.00036348",
+      "providers": [
+        "TOPAZCL"
+      ],
+      "paths": [
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "5000000",
+          "amount_out": "5485465"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0xf176e1b3b320401591648fc417472a9c927c9b0fd18c45d68877c2804360ead2",
+        "quote_ts": 1795124478828,
+        "amount_in": "5000000",
+        "requested_amount_in": "5000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "5485465",
+        "deviation_ratio": "-0.00036348",
+        "paths": [
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "5000000",
+            "amount_out": "5485465"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "5",
+      "amountIn": "5000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "5485340",
+      "amountOutMin": "5457913",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 817,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117483",
+      "requestId": "0x1c61fd9b5d194735a75194a591a9d57cac515da6350343d0bfb1f680b118c232",
+      "quoteTs": 1795124479589,
+      "deviationRatio": "-0.00038626",
+      "providers": [
+        "TOPAZCL",
+        "PANCAKE_INFINITY_CL"
+      ],
+      "paths": [
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "2500000",
+          "amount_out": "2742681"
+        },
+        {
+          "pool": "0x069fc2e429c4df2de5e3b89b1e0037572f0f1aed41a0607ef2be4cb9694dbccf",
+          "provider": "PANCAKE_INFINITY_CL",
+          "adapter": "0x6424Af12ea503704B18Aba928aEc78ee23843d7C",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000511",
+          "amount_in": "2500000",
+          "amount_out": "2742659",
+          "extra_data": "0x069fc2e429c4df2de5e3b89b1e0037572f0f1aed41a0607ef2be4cb9694dbccf"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0x1c61fd9b5d194735a75194a591a9d57cac515da6350343d0bfb1f680b118c232",
+        "quote_ts": 1795124479589,
+        "amount_in": "5000000",
+        "requested_amount_in": "5000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "5485340",
+        "deviation_ratio": "-0.00038626",
+        "paths": [
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "2500000",
+            "amount_out": "2742681"
+          },
+          {
+            "pool": "0x069fc2e429c4df2de5e3b89b1e0037572f0f1aed41a0607ef2be4cb9694dbccf",
+            "provider": "PANCAKE_INFINITY_CL",
+            "adapter": "0x6424Af12ea503704B18Aba928aEc78ee23843d7C",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000511",
+            "amount_in": "2500000",
+            "amount_out": "2742659",
+            "extra_data": "0x069fc2e429c4df2de5e3b89b1e0037572f0f1aed41a0607ef2be4cb9694dbccf"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "25",
+      "amountIn": "25000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "27424766",
+      "amountOutMin": "27287642",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 839,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117483",
+      "requestId": "0x1ba7e6dc85cb4a41a93bd40d9ce6ab063a65192f82994558af2246556a00e056",
+      "quoteTs": 1795124480394,
+      "deviationRatio": "-0.00045675",
+      "providers": [
+        "TOPAZCL"
+      ],
+      "paths": [
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "25000000",
+          "amount_out": "27424766"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0x1ba7e6dc85cb4a41a93bd40d9ce6ab063a65192f82994558af2246556a00e056",
+        "quote_ts": 1795124480394,
+        "amount_in": "25000000",
+        "requested_amount_in": "25000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "27424766",
+        "deviation_ratio": "-0.00045675",
+        "paths": [
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "25000000",
+            "amount_out": "27424766"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "25",
+      "amountIn": "25000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "27424766",
+      "amountOutMin": "27287642",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 782,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117483",
+      "requestId": "0x02559993c7b144f0850159d97aef41eabcf428d6cf814378b38b0ec36f763a36",
+      "quoteTs": 1795124481259,
+      "deviationRatio": "-0.00045675",
+      "providers": [
+        "TOPAZCL"
+      ],
+      "paths": [
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "25000000",
+          "amount_out": "27424766"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0x02559993c7b144f0850159d97aef41eabcf428d6cf814378b38b0ec36f763a36",
+        "quote_ts": 1795124481259,
+        "amount_in": "25000000",
+        "requested_amount_in": "25000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "27424766",
+        "deviation_ratio": "-0.00045675",
+        "paths": [
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "25000000",
+            "amount_out": "27424766"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "25",
+      "amountIn": "25000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "27424766",
+      "amountOutMin": "27287642",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 689,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117491",
+      "requestId": "0xb619821498964a04ba2a05c9b69367c3c7c341a5997142d39a7ffec76d15c5cf",
+      "quoteTs": 1795124481964,
+      "deviationRatio": "-0.00045675",
+      "providers": [
+        "TOPAZCL"
+      ],
+      "paths": [
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "25000000",
+          "amount_out": "27424766"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0xb619821498964a04ba2a05c9b69367c3c7c341a5997142d39a7ffec76d15c5cf",
+        "quote_ts": 1795124481964,
+        "amount_in": "25000000",
+        "requested_amount_in": "25000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "27424766",
+        "deviation_ratio": "-0.00045675",
+        "paths": [
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "25000000",
+            "amount_out": "27424766"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "100",
+      "amountIn": "100000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "109684759",
+      "amountOutMin": "109136335",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 921,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117491",
+      "requestId": "0xa97646389c4a4959ba37476ec00e31805762a456765941dd8202807623dc573c",
+      "quoteTs": 1795124482888,
+      "deviationRatio": "-0.00058709",
+      "providers": [
+        "UNISWAPV4",
+        "TOPAZCL",
+        "UNISWAPV3",
+        "AEROSLIPSTREAM"
+      ],
+      "paths": [
+        {
+          "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+          "provider": "UNISWAPV4",
+          "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000625",
+          "amount_in": "40000000",
+          "amount_out": "43871697",
+          "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "40000000",
+          "amount_out": "43877292"
+        },
+        {
+          "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+          "provider": "UNISWAPV3",
+          "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.0005",
+          "amount_in": "10000000",
+          "amount_out": "10967963"
+        },
+        {
+          "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+          "provider": "AEROSLIPSTREAM",
+          "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000233",
+          "amount_in": "10000000",
+          "amount_out": "10967807"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0xa97646389c4a4959ba37476ec00e31805762a456765941dd8202807623dc573c",
+        "quote_ts": 1795124482888,
+        "amount_in": "100000000",
+        "requested_amount_in": "100000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "109684759",
+        "deviation_ratio": "-0.00058709",
+        "paths": [
+          {
+            "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+            "provider": "UNISWAPV4",
+            "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000625",
+            "amount_in": "40000000",
+            "amount_out": "43871697",
+            "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "40000000",
+            "amount_out": "43877292"
+          },
+          {
+            "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+            "provider": "UNISWAPV3",
+            "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.0005",
+            "amount_in": "10000000",
+            "amount_out": "10967963"
+          },
+          {
+            "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+            "provider": "AEROSLIPSTREAM",
+            "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000233",
+            "amount_in": "10000000",
+            "amount_out": "10967807"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "100",
+      "amountIn": "100000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "109684759",
+      "amountOutMin": "109136335",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 701,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117491",
+      "requestId": "0xc3fec15932e643bf916c52d084dd5d6c1a842da081464a9c88829fd0d8da60d1",
+      "quoteTs": 1795124483552,
+      "deviationRatio": "-0.00058709",
+      "providers": [
+        "UNISWAPV4",
+        "TOPAZCL",
+        "UNISWAPV3",
+        "AEROSLIPSTREAM"
+      ],
+      "paths": [
+        {
+          "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+          "provider": "UNISWAPV4",
+          "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000625",
+          "amount_in": "40000000",
+          "amount_out": "43871697",
+          "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "40000000",
+          "amount_out": "43877292"
+        },
+        {
+          "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+          "provider": "UNISWAPV3",
+          "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.0005",
+          "amount_in": "10000000",
+          "amount_out": "10967963"
+        },
+        {
+          "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+          "provider": "AEROSLIPSTREAM",
+          "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000233",
+          "amount_in": "10000000",
+          "amount_out": "10967807"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0xc3fec15932e643bf916c52d084dd5d6c1a842da081464a9c88829fd0d8da60d1",
+        "quote_ts": 1795124483552,
+        "amount_in": "100000000",
+        "requested_amount_in": "100000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "109684759",
+        "deviation_ratio": "-0.00058709",
+        "paths": [
+          {
+            "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+            "provider": "UNISWAPV4",
+            "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000625",
+            "amount_in": "40000000",
+            "amount_out": "43871697",
+            "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "40000000",
+            "amount_out": "43877292"
+          },
+          {
+            "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+            "provider": "UNISWAPV3",
+            "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.0005",
+            "amount_in": "10000000",
+            "amount_out": "10967963"
+          },
+          {
+            "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+            "provider": "AEROSLIPSTREAM",
+            "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000233",
+            "amount_in": "10000000",
+            "amount_out": "10967807"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "100",
+      "amountIn": "100000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "109684759",
+      "amountOutMin": "109136335",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 649,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117491",
+      "requestId": "0x998f1666ab3f4409b29d1f261de2304de1952f587e604e178c67d5bfddea74db",
+      "quoteTs": 1795124484248,
+      "deviationRatio": "-0.00058709",
+      "providers": [
+        "UNISWAPV4",
+        "TOPAZCL",
+        "UNISWAPV3",
+        "AEROSLIPSTREAM"
+      ],
+      "paths": [
+        {
+          "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+          "provider": "UNISWAPV4",
+          "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000625",
+          "amount_in": "40000000",
+          "amount_out": "43871697",
+          "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "40000000",
+          "amount_out": "43877292"
+        },
+        {
+          "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+          "provider": "UNISWAPV3",
+          "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.0005",
+          "amount_in": "10000000",
+          "amount_out": "10967963"
+        },
+        {
+          "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+          "provider": "AEROSLIPSTREAM",
+          "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000233",
+          "amount_in": "10000000",
+          "amount_out": "10967807"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0x998f1666ab3f4409b29d1f261de2304de1952f587e604e178c67d5bfddea74db",
+        "quote_ts": 1795124484248,
+        "amount_in": "100000000",
+        "requested_amount_in": "100000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "109684759",
+        "deviation_ratio": "-0.00058709",
+        "paths": [
+          {
+            "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+            "provider": "UNISWAPV4",
+            "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000625",
+            "amount_in": "40000000",
+            "amount_out": "43871697",
+            "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "40000000",
+            "amount_out": "43877292"
+          },
+          {
+            "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+            "provider": "UNISWAPV3",
+            "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.0005",
+            "amount_in": "10000000",
+            "amount_out": "10967963"
+          },
+          {
+            "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+            "provider": "AEROSLIPSTREAM",
+            "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000233",
+            "amount_in": "10000000",
+            "amount_out": "10967807"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "500",
+      "amountIn": "500000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "548394938",
+      "amountOutMin": "545652963",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 821,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117491",
+      "requestId": "0x73f485a1289f442684a4a8e6a7f6c231bffffb8ba78c4bff9b5881bae56ba651",
+      "quoteTs": 1795124485087,
+      "deviationRatio": "-0.00063968",
+      "providers": [
+        "UNISWAPV4",
+        "TOPAZCL",
+        "AEROSLIPSTREAM",
+        "UNISWAPV3"
+      ],
+      "paths": [
+        {
+          "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+          "provider": "UNISWAPV4",
+          "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000625",
+          "amount_in": "50000000",
+          "amount_out": "54839451",
+          "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "50000000",
+          "amount_out": "54844666"
+        },
+        {
+          "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+          "provider": "AEROSLIPSTREAM",
+          "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000233",
+          "amount_in": "375000000",
+          "amount_out": "411291394"
+        },
+        {
+          "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+          "provider": "UNISWAPV3",
+          "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.0005",
+          "amount_in": "25000000",
+          "amount_out": "27419427"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0x73f485a1289f442684a4a8e6a7f6c231bffffb8ba78c4bff9b5881bae56ba651",
+        "quote_ts": 1795124485087,
+        "amount_in": "500000000",
+        "requested_amount_in": "500000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "548394938",
+        "deviation_ratio": "-0.00063968",
+        "paths": [
+          {
+            "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+            "provider": "UNISWAPV4",
+            "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000625",
+            "amount_in": "50000000",
+            "amount_out": "54839451",
+            "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "50000000",
+            "amount_out": "54844666"
+          },
+          {
+            "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+            "provider": "AEROSLIPSTREAM",
+            "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000233",
+            "amount_in": "375000000",
+            "amount_out": "411291394"
+          },
+          {
+            "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+            "provider": "UNISWAPV3",
+            "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.0005",
+            "amount_in": "25000000",
+            "amount_out": "27419427"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "500",
+      "amountIn": "500000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "548394938",
+      "amountOutMin": "545652963",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 682,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117491",
+      "requestId": "0xa83fa4da804845eba5f41c8728dc34d0bdc2ace2261c4002aaa571e50c6b65c5",
+      "quoteTs": 1795124485707,
+      "deviationRatio": "-0.00063968",
+      "providers": [
+        "UNISWAPV4",
+        "TOPAZCL",
+        "AEROSLIPSTREAM",
+        "UNISWAPV3"
+      ],
+      "paths": [
+        {
+          "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+          "provider": "UNISWAPV4",
+          "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000625",
+          "amount_in": "50000000",
+          "amount_out": "54839451",
+          "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "50000000",
+          "amount_out": "54844666"
+        },
+        {
+          "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+          "provider": "AEROSLIPSTREAM",
+          "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000233",
+          "amount_in": "375000000",
+          "amount_out": "411291394"
+        },
+        {
+          "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+          "provider": "UNISWAPV3",
+          "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.0005",
+          "amount_in": "25000000",
+          "amount_out": "27419427"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0xa83fa4da804845eba5f41c8728dc34d0bdc2ace2261c4002aaa571e50c6b65c5",
+        "quote_ts": 1795124485707,
+        "amount_in": "500000000",
+        "requested_amount_in": "500000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "548394938",
+        "deviation_ratio": "-0.00063968",
+        "paths": [
+          {
+            "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+            "provider": "UNISWAPV4",
+            "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000625",
+            "amount_in": "50000000",
+            "amount_out": "54839451",
+            "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "50000000",
+            "amount_out": "54844666"
+          },
+          {
+            "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+            "provider": "AEROSLIPSTREAM",
+            "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000233",
+            "amount_in": "375000000",
+            "amount_out": "411291394"
+          },
+          {
+            "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+            "provider": "UNISWAPV3",
+            "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.0005",
+            "amount_in": "25000000",
+            "amount_out": "27419427"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "500",
+      "amountIn": "500000000",
+      "tokenInDecimals": 6,
+      "expectAmountOut": "548394938",
+      "amountOutMin": "545652963",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 850,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117500",
+      "requestId": "0x34f2141de28b4949b4045b207e45b3f8c34120501b274c30b7adba24242872bd",
+      "quoteTs": 1795124486617,
+      "deviationRatio": "-0.00063968",
+      "providers": [
+        "UNISWAPV4",
+        "TOPAZCL",
+        "AEROSLIPSTREAM",
+        "UNISWAPV3"
+      ],
+      "paths": [
+        {
+          "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+          "provider": "UNISWAPV4",
+          "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000625",
+          "amount_in": "50000000",
+          "amount_out": "54839451",
+          "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+          "provider": "TOPAZCL",
+          "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.00005",
+          "amount_in": "50000000",
+          "amount_out": "54844666"
+        },
+        {
+          "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+          "provider": "AEROSLIPSTREAM",
+          "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.000233",
+          "amount_in": "375000000",
+          "amount_out": "411291394"
+        },
+        {
+          "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+          "provider": "UNISWAPV3",
+          "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+          "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": false,
+          "fee_rate": "0.0005",
+          "amount_in": "25000000",
+          "amount_out": "27419427"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0x34f2141de28b4949b4045b207e45b3f8c34120501b274c30b7adba24242872bd",
+        "quote_ts": 1795124486617,
+        "amount_in": "500000000",
+        "requested_amount_in": "500000000",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "548394938",
+        "deviation_ratio": "-0.00063968",
+        "paths": [
+          {
+            "pool": "0xeb0fd02fb8044d5514fb6e165ee134fd547eff0378bb33b76f4b81d8b03bd1ae",
+            "provider": "UNISWAPV4",
+            "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000625",
+            "amount_in": "50000000",
+            "amount_out": "54839451",
+            "extra_data": "0x0000000000000000000000003600000000000000000000000000000000000000000000000000000000000000bef5f6d51cb62b58e6a8f77868681825c6fe21c100000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "pool": "0xe7cc1483850f515e407bc3c5a4ac7f11b9618cf8",
+            "provider": "TOPAZCL",
+            "adapter": "0xD4483146db66Dc8A99Ea493300c2eEd4eFFf1257",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.00005",
+            "amount_in": "50000000",
+            "amount_out": "54844666"
+          },
+          {
+            "pool": "0x6f57b4c22155cef09f17184c954f227ff0493742",
+            "provider": "AEROSLIPSTREAM",
+            "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.000233",
+            "amount_in": "375000000",
+            "amount_out": "411291394"
+          },
+          {
+            "pool": "0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1",
+            "provider": "UNISWAPV3",
+            "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+            "token_in": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": false,
+            "fee_rate": "0.0005",
+            "amount_in": "25000000",
+            "amount_out": "27419427"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    }
+  ],
+  "summary": {
+    "count": 12,
+    "medianAmountOut": "68554762",
+    "minAmountOut": "5485340",
+    "maxAmountOut": "548394938",
+    "medianLatencyMs": 799
+  }
+}

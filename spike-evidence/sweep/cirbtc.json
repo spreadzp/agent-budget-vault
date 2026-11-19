@@ -1,0 +1,277 @@
+{
+  "slice": "254-3",
+  "scope": "probe",
+  "note": "indicative only: sizes ≈ 5/25/100 USD at implied ~61569 USD/cirBTC from probe quote; USD-equivalents approximate",
+  "chainId": 5042,
+  "tokenIn": {
+    "symbol": "cirBTC",
+    "address": "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+    "decimals": 8
+  },
+  "tokenOut": {
+    "symbol": "USDC",
+    "address": "0x3600000000000000000000000000000000000000",
+    "decimals": 6
+  },
+  "slippageBps": 50,
+  "sizes": [
+    "0.00008120",
+    "0.00040604",
+    "0.00162417"
+  ],
+  "sdkVersion": "1.2.1",
+  "gitCommit": "2465b74e7723d350b53919f097c92dd78b28d644",
+  "generatedAt": "2026-11-19T21:41:29.695Z",
+  "runs": [
+    {
+      "size": "0.00008120",
+      "amountIn": "8120",
+      "tokenInDecimals": 8,
+      "expectAmountOut": "4999030",
+      "amountOutMin": "4974034",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 714,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117503",
+      "requestId": "0x195ff0f3f5034adda82759477f91cd91eda9fa6c0fad43bc809c6f7120d1419c",
+      "quoteTs": 1795124487972,
+      "deviationRatio": "0.00000812",
+      "providers": [
+        "UNISWAPV3",
+        "AEROSLIPSTREAM",
+        "UNISWAPV4"
+      ],
+      "paths": [
+        {
+          "pool": "0x82916bee18fcef517b26c72d7cb5f13694e1db41",
+          "provider": "UNISWAPV3",
+          "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+          "token_in": "0x171a4217b86a807a64eb94757db6849fb4bdbaa0",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": true,
+          "fee_rate": "0.0001",
+          "amount_in": "4060",
+          "amount_out": "2499381"
+        },
+        {
+          "pool": "0x5e4d45a31beab080b73123b07f4757573e69f922",
+          "provider": "AEROSLIPSTREAM",
+          "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+          "token_in": "0x171a4217b86a807a64eb94757db6849fb4bdbaa0",
+          "token_out": "0x128cc466b61f542da60c70e3aa11c10e19b84edb",
+          "direction": false,
+          "fee_rate": "0.000661",
+          "amount_in": "4060",
+          "amount_out": "1434731047755144"
+        },
+        {
+          "pool": "0x0e3778957c57c367e7ea5513122d3e300a1ee635166e22d07c284b01dcea1f95",
+          "provider": "UNISWAPV4",
+          "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+          "token_in": "0x128cc466b61f542da60c70e3aa11c10e19b84edb",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": true,
+          "fee_rate": "0.002899",
+          "amount_in": "1434731047755144",
+          "amount_out": "2499649",
+          "extra_data": "0x000000000000000000000000128cc466b61f542da60c70e3aa11c10e19b84edb000000000000000000000000360000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c400000000000000000000000000000000000000000000000000000000000000190000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0x195ff0f3f5034adda82759477f91cd91eda9fa6c0fad43bc809c6f7120d1419c",
+        "quote_ts": 1795124487972,
+        "amount_in": "8120",
+        "requested_amount_in": "8120",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "4999030",
+        "deviation_ratio": "0.00000812",
+        "paths": [
+          {
+            "pool": "0x82916bee18fcef517b26c72d7cb5f13694e1db41",
+            "provider": "UNISWAPV3",
+            "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+            "token_in": "0x171a4217b86a807a64eb94757db6849fb4bdbaa0",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": true,
+            "fee_rate": "0.0001",
+            "amount_in": "4060",
+            "amount_out": "2499381"
+          },
+          {
+            "pool": "0x5e4d45a31beab080b73123b07f4757573e69f922",
+            "provider": "AEROSLIPSTREAM",
+            "adapter": "0x5628653353d50aA1eb12ae70871Fa09b56c36665",
+            "token_in": "0x171a4217b86a807a64eb94757db6849fb4bdbaa0",
+            "token_out": "0x128cc466b61f542da60c70e3aa11c10e19b84edb",
+            "direction": false,
+            "fee_rate": "0.000661",
+            "amount_in": "4060",
+            "amount_out": "1434731047755144"
+          },
+          {
+            "pool": "0x0e3778957c57c367e7ea5513122d3e300a1ee635166e22d07c284b01dcea1f95",
+            "provider": "UNISWAPV4",
+            "adapter": "0xD95E6B3C3b1B2bB136987F9705071205f64b2802",
+            "token_in": "0x128cc466b61f542da60c70e3aa11c10e19b84edb",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": true,
+            "fee_rate": "0.002899",
+            "amount_in": "1434731047755144",
+            "amount_out": "2499649",
+            "extra_data": "0x000000000000000000000000128cc466b61f542da60c70e3aa11c10e19b84edb000000000000000000000000360000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009c400000000000000000000000000000000000000000000000000000000000000190000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "0.00040604",
+      "amountIn": "40604",
+      "tokenInDecimals": 8,
+      "expectAmountOut": "24999295",
+      "amountOutMin": "24874298",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 762,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117503",
+      "requestId": "0x82201b9bbd644d099c000ea8b09614be9ea1bd739136457a937613c065ec03c4",
+      "quoteTs": 1795124488645,
+      "deviationRatio": "0.00106034",
+      "providers": [
+        "UNISWAPV3"
+      ],
+      "paths": [
+        {
+          "pool": "0x82916bee18fcef517b26c72d7cb5f13694e1db41",
+          "provider": "UNISWAPV3",
+          "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+          "token_in": "0x171a4217b86a807a64eb94757db6849fb4bdbaa0",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": true,
+          "fee_rate": "0.0001",
+          "amount_in": "40604",
+          "amount_out": "24999295"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0x82201b9bbd644d099c000ea8b09614be9ea1bd739136457a937613c065ec03c4",
+        "quote_ts": 1795124488645,
+        "amount_in": "40604",
+        "requested_amount_in": "40604",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "24999295",
+        "deviation_ratio": "0.00106034",
+        "paths": [
+          {
+            "pool": "0x82916bee18fcef517b26c72d7cb5f13694e1db41",
+            "provider": "UNISWAPV3",
+            "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+            "token_in": "0x171a4217b86a807a64eb94757db6849fb4bdbaa0",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": true,
+            "fee_rate": "0.0001",
+            "amount_in": "40604",
+            "amount_out": "24999295"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    },
+    {
+      "size": "0.00162417",
+      "amountIn": "162417",
+      "tokenInDecimals": 8,
+      "expectAmountOut": "99998883",
+      "amountOutMin": "99498888",
+      "slippageBps": 50,
+      "tokenOutDecimals": 6,
+      "latencyMs": 693,
+      "gasUnits": "500000",
+      "gasPriceWei": "25750000000",
+      "blockNumber": "32117503",
+      "requestId": "0x2b97e0855ffa4301bbf67f26f8b782ca97ec83d935bd44ea8d69f6d56c903075",
+      "quoteTs": 1795124489442,
+      "deviationRatio": "0.00107122",
+      "providers": [
+        "UNISWAPV3"
+      ],
+      "paths": [
+        {
+          "pool": "0x82916bee18fcef517b26c72d7cb5f13694e1db41",
+          "provider": "UNISWAPV3",
+          "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+          "token_in": "0x171a4217b86a807a64eb94757db6849fb4bdbaa0",
+          "token_out": "0x3600000000000000000000000000000000000000",
+          "direction": true,
+          "fee_rate": "0.0001",
+          "amount_in": "162417",
+          "amount_out": "99998883"
+        }
+      ],
+      "priceImpact": null,
+      "priceImpactReason": "SDK 1.2.1 findRoutes response has no priceImpact field",
+      "statusSnapshot": {
+        "providers": 20,
+        "executionRouter": "0x2528F3190603B85A155D48C31946703d71f921ED"
+      },
+      "raw": {
+        "request_id": "0x2b97e0855ffa4301bbf67f26f8b782ca97ec83d935bd44ea8d69f6d56c903075",
+        "quote_ts": 1795124489442,
+        "amount_in": "162417",
+        "requested_amount_in": "162417",
+        "unfilled_amount_in": "0",
+        "is_partial_fill": false,
+        "amount_out": "99998883",
+        "deviation_ratio": "0.00107122",
+        "paths": [
+          {
+            "pool": "0x82916bee18fcef517b26c72d7cb5f13694e1db41",
+            "provider": "UNISWAPV3",
+            "adapter": "0xA29a80C317173C82219DD3e6BecFCf47C779f82b",
+            "token_in": "0x171a4217b86a807a64eb94757db6849fb4bdbaa0",
+            "token_out": "0x3600000000000000000000000000000000000000",
+            "direction": true,
+            "fee_rate": "0.0001",
+            "amount_in": "162417",
+            "amount_out": "99998883"
+          }
+        ],
+        "contracts": {
+          "execution_router": "0x2528F3190603B85A155D48C31946703d71f921ED"
+        },
+        "gas": 500000
+      }
+    }
+  ],
+  "summary": {
+    "count": 3,
+    "medianAmountOut": "24999295",
+    "minAmountOut": "4999030",
+    "maxAmountOut": "99998883",
+    "medianLatencyMs": 714
+  }
+}

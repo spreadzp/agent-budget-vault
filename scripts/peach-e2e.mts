@@ -12,7 +12,8 @@
  * Signer key: PRIVATE_KEY in env — only the derived address is ever logged.
  */
 import { parseCommand } from "./lib/cli.mts";
-import { loadSpikeConfig } from "./lib/config.mts";
+import { loadSpikeConfig, type TokenConfig } from "./lib/config.mts";
+import { cirbtcUsdSizes, runSweep, writeSweepArtifact } from "./lib/peach/sweep.mts";
 import { loadState, requireStage } from "./lib/state.mts";
 import { runStatus, writeEvidence } from "./lib/status.mts";
 import { provision } from "./lib/vault/provisioning.mts";
@@ -37,6 +38,73 @@ async function main(): Promise<void> {
     const r = await provision(cfg.chains.testnet);
     log(`${r.reused ? "reused" : "created"} vault ${r.vault}${r.txHash ? ` tx=${r.txHash}` : ""}`);
     log("state -> PROVISIONED; evidence -> spike-evidence/provision.json");
+    return;
+  }
+
+  if (cmd === "sweep") {
+    const cfgm = cfg.chains.mainnet;
+    const tok = (sym: string): TokenConfig => {
+      const t = cfgm.tokens.find((x) => x.symbol === sym);
+      if (!t) throw new Error(`token ${sym} not in mainnet config`);
+      return t;
+    };
+    const usdc = tok("USDC");
+
+    const eurcArt = await runSweep({
+      cfg: cfgm,
+      tokenIn: tok("EURC"),
+      tokenOut: usdc,
+      sizes: ["5", "25", "100", "500"],
+      repeats: 3,
+      scope: "e2e",
+    });
+    const eurcPath = writeSweepArtifact("eurc", eurcArt);
+    log(`EURC sweep -> ${eurcPath} (runs=${eurcArt.summary.count})`);
+    for (const s of eurcArt.sizes) {
+      const outs = (eurcArt.runs as { size: string; expectAmountOut: string }[])
+        .filter((r) => r.size === s)
+        .map((r) => BigInt(r.expectAmountOut));
+      if (outs.length)
+        log(`  EURC ${s}: min=${outs.reduce((a, b) => (a < b ? a : b))} max=${outs.reduce((a, b) => (a > b ? a : b))} USDC-units`);
+    }
+
+    const cir = tok("cirBTC");
+    try {
+      const { sizes, impliedUsdPerUnit } = await cirbtcUsdSizes({
+        cfg: cfgm,
+        tokenIn: cir,
+        tokenOut: usdc,
+        usdTargets: [5, 25, 100],
+      });
+      const cirArt = await runSweep({
+        cfg: cfgm,
+        tokenIn: cir,
+        tokenOut: usdc,
+        sizes,
+        repeats: 1,
+        scope: "probe",
+        note: `indicative only: sizes ≈ 5/25/100 USD at implied ~${impliedUsdPerUnit} USD/cirBTC from probe quote; USD-equivalents approximate`,
+      });
+      const cirPath = writeSweepArtifact("cirbtc", cirArt);
+      log(`cirBTC sweep -> ${cirPath} (runs=${cirArt.summary.count}, implied ~${impliedUsdPerUnit} USD/cirBTC)`);
+    } catch (e) {
+      const cirPath = writeSweepArtifact("cirbtc", {
+        slice: "254-3",
+        scope: "probe",
+        note: `cirBTC probe failed: ${e instanceof Error ? e.message : String(e)}`,
+        chainId: cfgm.chainId,
+        tokenIn: { symbol: cir.symbol, address: cir.address, decimals: cir.decimals },
+        tokenOut: { symbol: usdc.symbol, address: usdc.address, decimals: usdc.decimals },
+        slippageBps: 50,
+        sizes: [],
+        sdkVersion: "",
+        gitCommit: "",
+        generatedAt: new Date().toISOString(),
+        runs: [],
+        summary: { count: 0, medianAmountOut: null, minAmountOut: null, maxAmountOut: null, medianLatencyMs: null },
+      });
+      log(`cirBTC probe failed (artifact ${cirPath}): ${e instanceof Error ? e.message : String(e)}`);
+    }
     return;
   }
 
