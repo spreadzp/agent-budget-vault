@@ -1,0 +1,149 @@
+{
+  "at": "2026-11-19T21:57:49.745Z",
+  "vault": "0x1eD696AfE80770E5662A17f8365e9e0b1AbA26AE",
+  "signer": "0x9264365408D363E7f142828f063077d7ab7C41d9",
+  "amountIn": "5000000",
+  "safetyChecks": [
+    {
+      "name": "chainId",
+      "ok": true,
+      "detail": "RPC 5042002"
+    },
+    {
+      "name": "tx.to==execution_router",
+      "ok": true,
+      "detail": "0x5ff56925140d6f5912c8ca6593f2c3bc28190607"
+    },
+    {
+      "name": "router==config",
+      "ok": true,
+      "detail": "0x5ff56925140d6f5912c8ca6593f2c3bc28190607"
+    },
+    {
+      "name": "payer/executor==signer",
+      "ok": true,
+      "detail": "0x9264365408D363E7f142828f063077d7ab7C41d9"
+    },
+    {
+      "name": "recipient==signer",
+      "ok": true,
+      "detail": "0x9264365408d363e7f142828f063077d7ab7c41d9"
+    },
+    {
+      "name": "tokenIn allowlist",
+      "ok": true,
+      "detail": "EURC"
+    },
+    {
+      "name": "tokenOut==vault USDC",
+      "ok": true,
+      "detail": "USDC"
+    },
+    {
+      "name": "amountIn",
+      "ok": true,
+      "detail": "5000000"
+    },
+    {
+      "name": "amountOutMin>=expect*(1-slip)",
+      "ok": true,
+      "detail": "15436159 >= 15436159"
+    },
+    {
+      "name": "deadline/freshness",
+      "ok": true,
+      "detail": "quote_ts 1795125472625, age -1793330347152s"
+    },
+    {
+      "name": "custom fee==0",
+      "ok": true,
+      "detail": "no integrator fee"
+    },
+    {
+      "name": "execution",
+      "ok": true,
+      "detail": "DIRECT_ALLOWANCE ready"
+    }
+  ],
+  "approveTxs": [
+    {
+      "step": "eurc_approve",
+      "txHash": "0x62b2c67b5b53cab93e40a673f150630e32a8efe546ffbd46cbeb316d3b0380a2"
+    },
+    {
+      "step": "approve_usdc",
+      "txHash": "0xebaf1b60db11987bf767b08ada90a2cb4a349e50cb7cede3e6e0ee03abf93be0"
+    }
+  ],
+  "verifyChecks": {
+    "simulation": [
+      {
+        "name": "publicClient.call",
+        "ok": true,
+        "detail": "simulated ok (post-approve)"
+      }
+    ],
+    "swap": [
+      {
+        "name": "receipt.status",
+        "ok": true,
+        "detail": "success"
+      },
+      {
+        "name": "Transfer(tokenIn) signer out",
+        "ok": true,
+        "detail": "5000000 (amount_in 5000000)"
+      },
+      {
+        "name": "Transfer(tokenOut) signer in >= amountOutMin",
+        "ok": true,
+        "detail": "15513728 >= 15436159"
+      },
+      {
+        "name": "delta tokenIn == events",
+        "ok": true,
+        "detail": "delta 5000000 vs events 5000000"
+      },
+      {
+        "name": "delta tokenOut == events - gas",
+        "ok": true,
+        "detail": "delta 15499334 vs events 15513728 - gas 14394 (±4)"
+      }
+    ],
+    "deposit": [
+      {
+        "name": "receipt.status",
+        "ok": true,
+        "detail": "success"
+      },
+      {
+        "name": "Deposited event",
+        "ok": true,
+        "detail": "amount=15513728"
+      },
+      {
+        "name": "vault token balance += amount",
+        "ok": true,
+        "detail": "0 -> 15513728"
+      },
+      {
+        "name": "stream active (rate>0,startTime>0)",
+        "ok": true,
+        "detail": "rate=5 start=1795125482"
+      },
+      {
+        "name": "endTime > startTime",
+        "ok": true,
+        "detail": "end=1798228227 start=1795125482"
+      },
+      {
+        "name": "not cancelled",
+        "ok": true,
+        "detail": "cancelled=false"
+      }
+    ]
+  },
+  "swapTx": "0x0d63735884682086af9c36b956f17a53c376d1bda3762e8e48ac6ca6e3e77b13",
+  "depositTx": "0x118a08385a07b162af2ecc0421c979ae222b9ff9ed465657adb4d1dd3b21bd80",
+  "result": "DEPOSITED"
+}

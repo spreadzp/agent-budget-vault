@@ -77,7 +77,7 @@ describe("buildSweepArtifact", () => {
     const json = JSON.parse(JSON.stringify(art)) as Record<string, unknown>;
     expect(json.chainId).toBe(5042);
     expect(json.sdkVersion).toBe("1.2.1");
-    const r0 = (json.runs as Record<string, unknown>[])[0]!;
+    const r0 = (json.runs as Record<string, unknown>[])[0];
     expect(r0.amountIn).toBe("5000000");
     expect(r0.expectAmountOut).toBe("4990000");
     expect(r0.priceImpact).toBeNull();

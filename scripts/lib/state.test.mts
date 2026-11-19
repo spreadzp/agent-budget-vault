@@ -69,10 +69,14 @@ describe("transitions", () => {
     expect(() => advance(s, "DEPOSITED")).toThrow(/transition/i);
   });
 
-  test("aborted is reachable from any stage, never re-enters", () => {
+  test("aborted reachable from any stage; retry allowed only to PROVISIONED", () => {
     let s = initialState();
     s = advance(s, "ABORTED", "boom");
-    expect(() => advance(s, "PROVISIONED")).toThrow();
+    s = advance(s, "PROVISIONED", "retry after abort");
+    expect(s.stage).toBe("PROVISIONED");
+    s = advance(s, "ABORTED", "boom2");
+    expect(() => advance(s, "DEPOSITED")).toThrow();
+    expect(() => advance(s, "INIT")).toThrow();
   });
 });
 

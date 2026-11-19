@@ -19,7 +19,7 @@ export const LINEAR_STAGES = [
 export const SIDE_STAGES = ["REQUOTE_REQUIRED", "TX_OUTCOME_UNKNOWN", "ABORTED"] as const;
 export const STAGES = [...LINEAR_STAGES, ...SIDE_STAGES] as const;
 export type Stage = (typeof STAGES)[number];
-export type TxStep = "provision" | "swap" | "approve" | "deposit";
+export type TxStep = "provision" | "eurc_approve" | "swap" | "approve" | "deposit";
 
 export interface TxIntent {
   step: TxStep;
@@ -36,6 +36,7 @@ export interface PendingTx {
 export interface SpikeState {
   stage: Stage;
   vault?: `0x${string}`;
+  usdcReceived?: string; // verified post-swap USDC amount for deposit (resume aid)
   pending: Partial<Record<TxStep, PendingTx>>;
   intents: TxIntent[];
   history: { stage: Stage; at: string; note?: string }[];
@@ -55,7 +56,8 @@ const SUBMITTED = new Set<Stage>(["SWAP_SUBMITTED", "APPROVE_SUBMITTED", "DEPOSI
 
 export function canTransition(from: Stage, to: Stage): boolean {
   if (to === "ABORTED") return from !== "ABORTED" && from !== "DEPOSITED";
-  if (from === "ABORTED" || from === "DEPOSITED") return false;
+  if (from === "ABORTED") return to === "PROVISIONED"; // retry: vault is still provisioned
+  if (from === "DEPOSITED") return false;
   if (LINEAR_NEXT[from] === to) return true;
   if (SUBMITTED.has(from) && to === "TX_OUTCOME_UNKNOWN") return true;
   if (from === "TX_OUTCOME_UNKNOWN") {

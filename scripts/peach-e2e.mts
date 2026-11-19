@@ -13,8 +13,9 @@
  */
 import { parseCommand } from "./lib/cli.mts";
 import { loadSpikeConfig, type TokenConfig } from "./lib/config.mts";
+import { runE2E } from "./lib/e2e.mts";
 import { cirbtcUsdSizes, runSweep, writeSweepArtifact } from "./lib/peach/sweep.mts";
-import { loadState, requireStage } from "./lib/state.mts";
+
 import { runStatus, writeEvidence } from "./lib/status.mts";
 import { provision } from "./lib/vault/provisioning.mts";
 
@@ -108,10 +109,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  // gates (D-254-7): e2e needs a provisioned vault; sweep is read-only;
-  // resume intentionally ungated — it reconciles broken/partial states
-  const state = loadState();
-  if (cmd === "e2e") requireStage(state, "PROVISIONED");
+  // gates (D-254-7): e2e gate lives inside runE2E (requireStage+ABORTED
+  // retry); sweep is read-only; resume reconciles broken/partial states
+  if (cmd === "e2e") {
+    const t = await runE2E(cfg.chains.testnet);
+    log(`result=${t.result} swapTx=${t.swapTx ?? "-"} depositTx=${t.depositTx ?? "-"}`);
+    log(`transcript -> spike-evidence/e2e/transcript.json`);
+    return;
+  }
 
   console.error(`'${cmd}' not implemented yet — see docs/EPICS/254-peach-dex-integration/slices`);
   process.exit(2);

@@ -6,7 +6,7 @@ export function toTokenUnits(decimal: string, decimals: number): bigint {
   const m = /^(\d+)(?:\.(\d+))?$/.exec(decimal.trim());
   if (!m) throw new Error(`bad decimal amount: ${decimal}`);
   const frac = (m[2] ?? "").padEnd(decimals, "0").slice(0, decimals);
-  return BigInt(m[1]!) * 10n ** BigInt(decimals) + BigInt(frac === "" ? 0 : frac);
+  return BigInt(m[1]) * 10n ** BigInt(decimals) + BigInt(frac === "" ? 0 : frac);
 }
 
 export function minAmountOut(expectOut: bigint, slippageBps: number): bigint {

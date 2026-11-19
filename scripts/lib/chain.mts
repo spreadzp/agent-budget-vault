@@ -13,6 +13,23 @@ export const ERC20_META_ABI = parseAbi([
   "function decimals() view returns (uint8)",
 ]);
 
+export const ERC20_ABI = parseAbi([
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+]);
+
+export const VAULT_ABI = parseAbi([
+  "function deposit(uint256 amount, uint8 mode)",
+  "function owner() view returns (address)",
+  "function token() view returns (address)",
+  "function cancelled() view returns (bool)",
+  "event Deposited(address indexed owner, uint256 amount, uint8 mode, uint256 newRate, uint256 newEndTime)",
+]);
+
 export const FACTORY_ABI = parseAbi([
   "function vaultCount() view returns (uint256)",
   "function token() view returns (address)",
