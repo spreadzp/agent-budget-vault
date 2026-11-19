@@ -8,3 +8,6 @@ broadcast/
 dist/
 .arc-studio/
 .DS_Store
+# EPIC-254 spike runtime state + code-graph index
+state/
+graphify-out/

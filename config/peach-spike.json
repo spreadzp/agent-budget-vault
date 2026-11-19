@@ -1,0 +1,64 @@
+{
+  "chains": {
+    "testnet": {
+      "chainId": 5042002,
+      "name": "arc-testnet",
+      "rpcUrl": "https://rpc.testnet.arc.io",
+      "explorerUrl": "https://explorer.testnet.arc.io",
+      "factory": "0x0f36cdda646bad0e8e65c48b2ee7304dfca84d25",
+      "router": "0x5FF56925140D6f5912C8Ca6593f2C3BC28190607",
+      "vaultDepositToken": "0x3600000000000000000000000000000000000000",
+      "apiBaseUrl": "https://api-arc.cipheron.org",
+      "tokens": [
+        {
+          "symbol": "USDC",
+          "address": "0x3600000000000000000000000000000000000000",
+          "decimals": 6,
+          "scope": "e2e"
+        },
+        {
+          "symbol": "EURC",
+          "address": "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+          "decimals": 6,
+          "scope": "e2e"
+        },
+        {
+          "symbol": "cirBTC",
+          "address": "0xf0c4a4ce82a5746abaad9425360ab04fbba432bf",
+          "decimals": 8,
+          "scope": "probe"
+        }
+      ]
+    },
+    "mainnet": {
+      "chainId": 5042,
+      "name": "arc-mainnet",
+      "rpcUrl": "https://rpc.drpc.mainnet.arc.io",
+      "explorerUrl": "https://explorer.arc.io",
+      "factory": "0xebd0b7ad8f2135ec80f1c09a6c0c25db6e79f7aa",
+      "router": "0x2528F3190603B85A155D48C31946703d71f921ED",
+      "vaultDepositToken": "0x3600000000000000000000000000000000000000",
+      "apiBaseUrl": "https://api.peach.ag",
+      "tokens": [
+        {
+          "symbol": "USDC",
+          "address": "0x3600000000000000000000000000000000000000",
+          "decimals": 6,
+          "scope": "e2e"
+        },
+        {
+          "symbol": "EURC",
+          "address": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+          "decimals": 6,
+          "scope": "e2e"
+        },
+        {
+          "symbol": "cirBTC",
+          "address": "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+          "decimals": 8,
+          "scope": "probe"
+        }
+      ]
+    }
+  }
+}

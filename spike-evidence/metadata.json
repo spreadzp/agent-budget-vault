@@ -1,0 +1,9 @@
+{
+  "generatedAt": "2026-11-19T21:29:34.435Z",
+  "sdk": {
+    "name": "@masterpeach/arc-aggregator-sdk",
+    "version": "1.2.1"
+  },
+  "gitCommit": "94b7ac015977c7a2b0345a7fc79573544cd50660",
+  "bunVersion": "1.3.14"
+}
