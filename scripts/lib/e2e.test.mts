@@ -23,7 +23,7 @@ function swap(over: Partial<ApiSwapData> = {}): ApiSwapData {
   return {
     request_id: "r1",
     quote_id: "0x01",
-    quote_ts: NOW - 30,
+    quote_ts: (NOW - 30) * 1000,
     amount_in: "5000000",
     amount_out: "5490000",
     expect_amount_out: "5490000",
@@ -104,7 +104,7 @@ describe("evaluateSwapSafety", () => {
     expect(names(evaluateSwapSafety(base(s)))).toContain("amountOutMin");
   });
   test("stale quote fails deadline", () => {
-    const s = swap({ quote_ts: NOW - 500 });
+    const s = swap({ quote_ts: (NOW - 500) * 1000 });
     expect(names(evaluateSwapSafety(base(s)))).toContain("deadline");
   });
   test("tokenIn not allowlisted fails", () => {

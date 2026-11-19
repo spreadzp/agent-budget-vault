@@ -1,0 +1,10 @@
+{
+  "case": "insufficient-eurc",
+  "at": "2026-11-19T22:02:42.212Z",
+  "signer": "0xb85C458d113330f0C93045e1375356c147147e1a",
+  "note": "fresh zero-balance signer — EURC balance check is the first gate in runE2E, before any quote/approve/swap signature",
+  "eurcBalance": "0",
+  "required": "5000000",
+  "outcome": "ABORTED at balance check before any signature",
+  "signatures": 0
+}

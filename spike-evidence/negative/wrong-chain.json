@@ -1,0 +1,8 @@
+{
+  "case": "wrong-chain",
+  "at": "2026-11-19T22:02:43.548Z",
+  "rpcChainId": 5042,
+  "expectedChainId": 5042002,
+  "outcome": "ABORTED at chainId pre-check before any tx",
+  "signatures": 0
+}

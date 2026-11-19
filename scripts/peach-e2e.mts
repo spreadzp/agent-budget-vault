@@ -14,6 +14,8 @@
 import { parseCommand } from "./lib/cli.mts";
 import { loadSpikeConfig, type TokenConfig } from "./lib/config.mts";
 import { runE2E } from "./lib/e2e.mts";
+import { negExpiredQuote, negInsufficientEurc, negWrongChain } from "./lib/neg.mts";
+import { runResume } from "./lib/resume.mts";
 import { cirbtcUsdSizes, runSweep, writeSweepArtifact } from "./lib/peach/sweep.mts";
 
 import { runStatus, writeEvidence } from "./lib/status.mts";
@@ -22,7 +24,7 @@ import { provision } from "./lib/vault/provisioning.mts";
 const log = (...a: unknown[]) => console.log(`[${new Date().toISOString()}]`, ...a);
 
 async function main(): Promise<void> {
-  const { cmd } = parseCommand(process.argv.slice(2));
+  const { cmd, args } = parseCommand(process.argv.slice(2));
   const cfg = loadSpikeConfig();
 
   if (cmd === "status") {
@@ -112,13 +114,37 @@ async function main(): Promise<void> {
   // gates (D-254-7): e2e gate lives inside runE2E (requireStage+ABORTED
   // retry); sweep is read-only; resume reconciles broken/partial states
   if (cmd === "e2e") {
-    const t = await runE2E(cfg.chains.testnet);
+    const t = await runE2E(cfg.chains.testnet, { drill: args.includes("--drill") });
     log(`result=${t.result} swapTx=${t.swapTx ?? "-"} depositTx=${t.depositTx ?? "-"}`);
     log(`transcript -> spike-evidence/e2e/transcript.json`);
     return;
   }
 
-  console.error(`'${cmd}' not implemented yet — see docs/EPICS/254-peach-dex-integration/slices`);
+  if (cmd === "resume") {
+    const t = await runResume(cfg.chains.testnet);
+    log(`result=${t.result} swapTx=${t.swapTx ?? "-"} depositTx=${t.depositTx ?? "-"}`);
+    log(`transcript -> spike-evidence/e2e/resume-transcript.json`);
+    return;
+  }
+
+  if (cmd === "neg") {
+    const which = args[0];
+    const wait = Number(args.find((a) => a.startsWith("--wait="))?.split("=")[1] ?? 0);
+    const path =
+      which === "expired-quote"
+        ? await negExpiredQuote(cfg.chains.testnet, wait)
+        : which === "insufficient-eurc"
+          ? await negInsufficientEurc(cfg.chains.testnet)
+          : which === "wrong-chain"
+            ? await negWrongChain(cfg.chains.testnet)
+            : (() => {
+                throw new Error("usage: neg <expired-quote|insufficient-eurc|wrong-chain> [--wait=SECS]");
+              })();
+    log(`neg ${String(which)} -> ${path}`);
+    return;
+  }
+
+  console.error(`'${String(cmd)}' not implemented yet — see docs/EPICS/254-peach-dex-integration/slices`);
   process.exit(2);
 }
 

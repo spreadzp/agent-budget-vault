@@ -1,0 +1,76 @@
+{
+  "case": "expired-quote",
+  "at": "2026-11-19T22:10:07.006Z",
+  "quoteTs": 1795126070845,
+  "evaluatedAt": 1795126206,
+  "quoteAgeSecs": 136,
+  "deadlineCheck": {
+    "name": "deadline",
+    "ok": false,
+    "detail": "stale/future quote_ts 1795126070845, age 136s"
+  },
+  "outcome": "ABORTED before any signature (REQUOTE_REQUIRED semantics: re-quote required, zero signatures on stale quote)",
+  "signatures": 0,
+  "allChecks": [
+    {
+      "name": "chainId",
+      "ok": true,
+      "detail": "RPC 5042002"
+    },
+    {
+      "name": "tx.to==execution_router",
+      "ok": true,
+      "detail": "0x5ff56925140d6f5912c8ca6593f2c3bc28190607"
+    },
+    {
+      "name": "router==config",
+      "ok": true,
+      "detail": "0x5ff56925140d6f5912c8ca6593f2c3bc28190607"
+    },
+    {
+      "name": "payer/executor==signer",
+      "ok": true,
+      "detail": "0x9264365408D363E7f142828f063077d7ab7C41d9"
+    },
+    {
+      "name": "recipient==signer",
+      "ok": true,
+      "detail": "0x9264365408d363e7f142828f063077d7ab7c41d9"
+    },
+    {
+      "name": "tokenIn allowlist",
+      "ok": true,
+      "detail": "EURC"
+    },
+    {
+      "name": "tokenOut==vault USDC",
+      "ok": true,
+      "detail": "USDC"
+    },
+    {
+      "name": "amountIn",
+      "ok": true,
+      "detail": "5000000"
+    },
+    {
+      "name": "amountOutMin>=expect*(1-slip)",
+      "ok": true,
+      "detail": "11769422 >= 11769422"
+    },
+    {
+      "name": "deadline",
+      "ok": false,
+      "detail": "stale/future quote_ts 1795126070845, age 136s"
+    },
+    {
+      "name": "custom fee==0",
+      "ok": true,
+      "detail": "no integrator fee"
+    },
+    {
+      "name": "execution",
+      "ok": true,
+      "detail": "DIRECT_ALLOWANCE ready"
+    }
+  ]
+}

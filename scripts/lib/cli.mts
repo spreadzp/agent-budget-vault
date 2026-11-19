@@ -1,4 +1,4 @@
-export const COMMANDS = ["provision", "sweep", "e2e", "resume", "status"] as const;
+export const COMMANDS = ["provision", "sweep", "e2e", "resume", "status", "neg"] as const;
 export type Command = (typeof COMMANDS)[number];
 
 export function parseCommand(argv: string[]): { cmd: Command; args: string[] } {

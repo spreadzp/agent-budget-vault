@@ -1,0 +1,81 @@
+{
+  "at": "2026-11-19T22:02:28.170Z",
+  "vault": "0x1eD696AfE80770E5662A17f8365e9e0b1AbA26AE",
+  "signer": "0x9264365408D363E7f142828f063077d7ab7C41d9",
+  "amountIn": "5000000",
+  "safetyChecks": [],
+  "approveTxs": [
+    {
+      "step": "approve_usdc",
+      "txHash": "0x3d9d7d70e9d68fbfb78f29aa43150cd367275799d2160aa79782edb37cb3fc5a"
+    }
+  ],
+  "verifyChecks": {
+    "swap": [
+      {
+        "name": "receipt.status",
+        "ok": true,
+        "detail": "success"
+      },
+      {
+        "name": "Transfer(tokenIn) signer out",
+        "ok": true,
+        "detail": "5000000 (amount_in 5000000)"
+      },
+      {
+        "name": "Transfer(tokenOut) signer in >= amountOutMin",
+        "ok": true,
+        "detail": "13484252 >= 1"
+      },
+      {
+        "name": "delta tokenIn == events",
+        "ok": true,
+        "detail": "delta 5000000 vs events 5000000"
+      },
+      {
+        "name": "delta tokenOut == events - gas",
+        "ok": true,
+        "detail": "delta 13470075 vs events 13484252 - gas 14177 (±4)"
+      }
+    ],
+    "deposit": [
+      {
+        "name": "receipt.status",
+        "ok": true,
+        "detail": "success"
+      },
+      {
+        "name": "Deposited event",
+        "ok": true,
+        "detail": "amount=13484252"
+      },
+      {
+        "name": "vault token balance += amount",
+        "ok": true,
+        "detail": "15513728 -> 28997980"
+      },
+      {
+        "name": "stream active (rate>0,startTime>0)",
+        "ok": true,
+        "detail": "rate=5 start=1795125482"
+      },
+      {
+        "name": "endTime > startTime",
+        "ok": true,
+        "detail": "end=1800925077 start=1795125482"
+      },
+      {
+        "name": "not cancelled",
+        "ok": true,
+        "detail": "cancelled=false"
+      }
+    ]
+  },
+  "notes": [
+    "resume run — txHashes adopted from persisted intents",
+    "post-hoc resume: balanceBefore reconstructed from events+gas (delta check is consistency-only; events/receipt remain on-chain truth)"
+  ],
+  "swapTx": "0xcb1adf380cadbfba9e6b3f2498bc2f14aea5e02074f7957f19e1feefac3b7e36",
+  "depositTx": "0x835d5fa526013426ed71900802326608d7df31bc5c88b79441d9fc7837902964",
+  "result": "DEPOSITED"
+}

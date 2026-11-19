@@ -81,11 +81,15 @@ export function evaluateSwapSafety(args: {
       ? yes("amountOutMin>=expect*(1-slip)", `${swap.tx.amount_out_min} >= ${expectedMin}`)
       : no("amountOutMin", `${swap.tx.amount_out_min} < ${expectedMin}`),
   );
-  const fresh = args.nowSecs - swap.quote_ts <= 110;
+  // API returns quote_ts in epoch ms — normalize; accept ±30s clock skew,
+  // reject age > 110s (deadline_secs is 120).
+  const quoteTsSecs = swap.quote_ts > 1e12 ? Math.floor(swap.quote_ts / 1000) : swap.quote_ts;
+  const age = args.nowSecs - quoteTsSecs;
+  const fresh = age <= 110 && age >= -30;
   checks.push(
     fresh
-      ? yes("deadline/freshness", `quote_ts ${swap.quote_ts}, age ${args.nowSecs - swap.quote_ts}s`)
-      : no("deadline", `stale quote_ts ${swap.quote_ts}`),
+      ? yes("deadline/freshness", `quote_ts ${swap.quote_ts} (${quoteTsSecs}s), age ${age}s`)
+      : no("deadline", `stale/future quote_ts ${swap.quote_ts}, age ${age}s`),
   );
   checks.push(
     swap.custom_fee_bps === 0 && swap.custom_fee_amount === "0"
