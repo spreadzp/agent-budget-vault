@@ -163,23 +163,47 @@ describe("submitGuarded — sign-before-broadcast (audit C1)", () => {
     expect(broadcasts()).toBe(1);
   });
 
-  test("pending with txHash + no receipt + no tx → provably dead, cleared", async () => {
+  // audit N2-H1: missing receipt + missing tx + no raw is UNKNOWN, not dead —
+  // an RPC error is never proof of death. Fail closed, keep the pending.
+  test("pending with txHash + no receipt + no tx + no raw → unknown, fail closed", async () => {
     const { client, wallet, broadcasts } = mockClients("ok");
     let s = initialState();
     s = recordIntent(s, {
       step: "swap",
       sender: SENDER,
       nonce: 7,
-      params: {}, // no journaled raw → hash can never land
+      params: {}, // no journaled raw → death cannot be proven
       createdAt: new Date().toISOString(),
     });
     s = markSubmitted(s, "swap", "0xdeadbeef00000000000000000000000000000000000000000000000000000001");
     saveState(s, stateFile);
     await expect(
       submitGuarded({ ...base(client, wallet, s), request: REQ }),
-    ).rejects.toThrow(/never reached the chain/);
+    ).rejects.toThrow(/outcome unproven|fail closed/);
     expect(broadcasts()).toBe(0);
-    expect(loadState(stateFile).pending.swap).toBeUndefined();
+    expect(loadState(stateFile).pending.swap?.txHash).toBeDefined();
+  });
+
+  // audit N2-H1: 'never-sent' is airtight only when the chain proves the
+  // nonce slot was consumed by a different tx (latest nonce > journaled).
+  test("pending with txHash + nonce consumed on-chain → provably dead", async () => {
+    const { client, wallet } = mockClients("ok", 8);
+    let s = initialState();
+    s = recordIntent(s, {
+      step: "swap",
+      sender: SENDER,
+      nonce: 7,
+      params: {},
+      createdAt: new Date().toISOString(),
+    });
+    s = markSubmitted(s, "swap", "0xdeadbeef00000000000000000000000000000000000000000000000000000001");
+    saveState(s, stateFile);
+    await expect(
+      submitGuarded({ ...base(client, wallet, s), request: REQ }),
+    ).rejects.toThrow(/never reached the chain|pending cleared/);
+    const disk = loadState(stateFile);
+    expect(disk.pending.swap).toBeUndefined();
+    expect(disk.intents[disk.intents.length - 1]?.params.dead).toBe("never-sent");
   });
 
   // audit N-H1+N-M8: crash after the atomic save but before broadcast → the

@@ -17,7 +17,7 @@ import {
 import { EVIDENCE_DIR, type ChainConfig } from "../config.mts";
 import { accountFromEnv } from "../env.mts";
 import { advance, clearPending, loadState, saveState, type SpikeState } from "../state.mts";
-import { reconcileOrphanIntent, submitGuarded } from "../tx.mts";
+import { reconcileHashedPending, reconcileOrphanIntent, submitGuarded } from "../tx.mts";
 
 const ZERO = "0x0000000000000000000000000000000000000000" as const;
 const PROVISION_EVIDENCE = join(EVIDENCE_DIR, "provision.json");
@@ -148,33 +148,36 @@ export async function provision(
     if (chk.ok) return { vault: state.vault, reused: true, policy };
   }
 
-  // 1) pending intent reconcile (crash between persist and broadcast/mine)
+  // 1) pending intent reconcile (crash between persist and broadcast/mine).
+  // audit N2-L6: route hashed pendings through the shared reconciler so an
+  // un-broadcast-but-journaled tx is rebroadcast verbatim or proven dead —
+  // not wedged as "in flight" forever.
   const pend = state.pending.provision;
   if (pend?.txHash) {
-    const rcpt = await client
-      .getTransactionReceipt({ hash: pend.txHash })
-      .catch(() => undefined);
-    if (!rcpt) {
+    const r = await reconcileHashedPending(client, "provision", pend);
+    if (r.status === "in-flight" || r.status === "unknown") {
       throw new Error(
-        `provision tx ${pend.txHash} in flight / no receipt — resend forbidden (D-254-12); retry later`,
+        `provision tx ${pend.txHash} ${r.status === "in-flight" ? "in flight / no receipt" : `outcome unproven (${r.reason})`} — resend forbidden (D-254-12); retry later`,
       );
     }
-    if (rcpt.from.toLowerCase() !== signer.toLowerCase() || (rcpt.to ?? "").toLowerCase() !== cfg.factory.toLowerCase()) {
-      throw new Error(`provision tx ${pend.txHash} receipt does not match intent (from/to)`);
-    }
-    if (rcpt.status !== "success") {
+    if (r.status === "mined") {
+      const rcpt = r.receipt!;
+      if (rcpt.from.toLowerCase() !== signer.toLowerCase() || (rcpt.to ?? "").toLowerCase() !== cfg.factory.toLowerCase()) {
+        throw new Error(`provision tx ${pend.txHash} receipt does not match intent (from/to)`);
+      }
+      const vault = (await client.readContract({
+        address: cfg.factory,
+        abi: FACTORY_ABI,
+        functionName: "vaultOf",
+        args: [signer],
+      }));
       state = persistState(clearPending(state, "provision"));
-      throw new Error(`provision tx ${pend.txHash} reverted — pending cleared, re-run allowed`);
+      if (vault === ZERO) throw new Error(`tx ${pend.txHash} mined but vaultOf==0 — investigate`);
+      return adoptVault(vault, pend.txHash, true);
     }
-    const vault = (await client.readContract({
-      address: cfg.factory,
-      abi: FACTORY_ABI,
-      functionName: "vaultOf",
-      args: [signer],
-    }));
+    // reverted or never-sent: mark dead and continue to a fresh create
+    pend.intent.params.dead = r.status;
     state = persistState(clearPending(state, "provision"));
-    if (vault === ZERO) throw new Error(`tx ${pend.txHash} mined but vaultOf==0 — investigate`);
-    return adoptVault(vault, pend.txHash, true);
   }
   if (pend) {
     await reconcileOrphanIntent(client, signer, "provision", pend);

@@ -107,16 +107,17 @@ async function reconcileHash(
   state: SpikeState,
   step: TxStep,
   pend: PendingTx,
-): Promise<{ state: SpikeState; outcome?: PendingOutcome }> {
+): Promise<{ state: SpikeState; outcome?: PendingOutcome; rolledBack?: boolean }> {
   const r = await reconcileHashedPending(ctx.client, step, pend);
-  if (r.status === "in-flight") {
+  if (r.status === "in-flight" || r.status === "unknown") {
     throw new Error(
-      `${step} tx ${pend.txHash} exists but no receipt — in flight, resend forbidden (D-254-12); retry later`,
+      `${step} tx ${pend.txHash} ${r.status === "in-flight" ? "exists but no receipt — in flight" : `outcome unproven (${r.reason})`} — resend forbidden (D-254-12); retry later`,
     );
   }
   if (r.status === "reverted" || r.status === "never-sent") {
-    // provably dead: consumed nothing — clear and roll the FSM back so the
-    // step can be re-planned legitimately (audit N-M8).
+    // provably dead: consumed nothing — mark the intent dead (audit N2-M1),
+    // clear and roll the FSM back so the step can be re-planned legitimately.
+    pend.intent.params.dead = r.status;
     if (step in (state.pending as Record<TxStep, unknown>)) {
       state = clearPending(state, step);
     }
@@ -125,7 +126,7 @@ async function reconcileHash(
       state = advance(state, rb.back, `${step} tx ${r.status}`);
     }
     saveState(state);
-    return { state };
+    return { state, rolledBack: true };
   }
   const rcpt = r.receipt!;
   bindReceipt(step, pend.txHash!, rcpt, pend.intent);
@@ -166,13 +167,15 @@ async function adoptJournaled(
   ctx: E2eCtx,
   state: SpikeState,
   step: TxStep,
-): Promise<PendingOutcome | undefined> {
-  const done = [...state.intents].reverse().find((i) => i.step === step && i.txHash !== undefined);
-  if (!done?.txHash) return undefined;
+): Promise<{ outcome?: PendingOutcome; state: SpikeState; rolledBack?: boolean }> {
+  const done = [...state.intents]
+    .reverse()
+    .find((i) => i.step === step && i.txHash !== undefined && !i.params.dead);
+  if (!done?.txHash) return { state };
   const pend: PendingTx = { intent: done, txHash: done.txHash };
-  const r = await reconcileHash(ctx, state, step, pend);
-  // dead journaled hash → undefined: caller may retry the leg legitimately
-  return r.outcome;
+  // audit N2-M2: callers MUST take the returned state — reconcileHash may
+  // have saved a rolled-back version, and a stale copy would CAS-conflict.
+  return reconcileHash(ctx, state, step, pend);
 }
 
 /**
@@ -197,8 +200,10 @@ function consumeOutcomes(state: SpikeState, outcomes: PendingOutcome[]): SpikeSt
   for (const o of outcomes) {
     const target = SUBMIT_STAGE[o.step];
     if (!target) continue;
-    if (stageRank(state.stage) < stageRank(target)) {
-      state = advance(state, target, `adopted ${o.txHash}`);
+    // audit N2-M4: step through each legal linear transition, one at a time
+    while (stageRank(state.stage) < stageRank(target)) {
+      const next = STAGE_ORDER[stageRank(state.stage) + 1];
+      state = advance(state, next, `adopted ${o.txHash}`);
       changed = true;
     }
   }
@@ -272,9 +277,15 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
       return runE2E(cfg);
     }
     case "SWAP_SUBMITTED": {
+      const adj = await adoptJournaled(ctx, state, "swap");
+      if (adj.rolledBack) {
+        // journaled swap was provably dead — stage rolled back to QUOTED;
+        // re-dispatch from the clean stage (audit N2-M2).
+        return runResume(cfg);
+      }
+      state = adj.state;
       const swapOut =
-        rec.outcomes.find((o) => o.step === "swap") ??
-        (await adoptJournaled(ctx, state, "swap"));
+        rec.outcomes.find((o) => o.step === "swap") ?? adj.outcome;
       if (!swapOut) {
         throw new Error("stage SWAP_SUBMITTED but no pending/journaled swap receipt — check state file");
       }
@@ -339,9 +350,10 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
       return t;
     }
     case "DEPOSIT_SUBMITTED": {
+      const adj = await adoptJournaled(ctx, state, "deposit");
+      state = adj.state;
       const dep =
-        rec.outcomes.find((o) => o.step === "deposit") ??
-        (await adoptJournaled(ctx, state, "deposit"));
+        rec.outcomes.find((o) => o.step === "deposit") ?? adj.outcome;
       if (!dep) {
         // audit N-M4: reached only for a provably dead deposit (reverted or
         // never-landed — an RPC error throws earlier). Retry the leg (M3).

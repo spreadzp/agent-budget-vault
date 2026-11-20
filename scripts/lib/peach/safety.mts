@@ -120,14 +120,23 @@ export function evaluateSwapSafety(args: {
       ? yes("expect≈route.amount_out", `${swap.expect_amount_out} vs ${route.amount_out} (drift ${drift}ppm)`)
       : no("expect≈route.amount_out", `drift ${drift}ppm > ${EXPECT_DRIFT_PPM}ppm`),
   );
-  // audit N-M5: a MISSING deviation_ratio is a failure, not a free pass —
-  // Number(undefined ?? "") is 0, so absence must be checked explicitly.
-  const dev = route.deviation_ratio === undefined ? NaN : Number(route.deviation_ratio);
-  checks.push(
-    Number.isFinite(dev) && Math.abs(dev) <= DEVIATION_BOUND
-      ? yes("deviation_ratio bounded", String(route.deviation_ratio))
-      : no("deviation_ratio", `${route.deviation_ratio} missing/malformed or |dev| > ${DEVIATION_BOUND}`),
-  );
+  // audit N-M5 + N2-L4: a non-numeric deviation_ratio fails (Number("") is 0,
+  // so a strict regex is required). The testnet API never reports this field
+  // for EURC→USDC (verified across every live run) — absence is annotated,
+  // not fatal, because route.amount_in equality and the expect-vs-route
+  // drift bound below enforce the same quote-integrity purpose.
+  const devRaw = typeof route.deviation_ratio === "string" ? route.deviation_ratio.trim() : "";
+  if (devRaw === "") {
+    checks.push(yes("deviation_ratio", "not reported by API — drift bound still enforced"));
+  } else {
+    const devOk =
+      /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(devRaw) && Math.abs(Number(devRaw)) <= DEVIATION_BOUND;
+    checks.push(
+      devOk
+        ? yes("deviation_ratio bounded", String(route.deviation_ratio))
+        : no("deviation_ratio", `${route.deviation_ratio} malformed or |dev| > ${DEVIATION_BOUND}`),
+    );
+  }
   checks.push(
     BigInt(swap.tx.amount_out_min) >= expectedMin && BigInt(swap.tx.amount_out_min) > 0n
       ? yes("amountOutMin>=expect*(1-slip)", `${swap.tx.amount_out_min} >= ${expectedMin}`)

@@ -39,7 +39,7 @@ import { apiClientFor } from "./peach/client.mts";
 import { evaluateSwapSafety, simulateSwap, type SafetyCheck } from "./peach/safety.mts";
 import { readBalances, verifySwap, type VerifyCheck } from "./peach/verification.mts";
 import { advance, loadState, requireStage, saveState, type SpikeState } from "./state.mts";
-import { submitGuarded } from "./tx.mts";
+import { liveMoneyIntentReason, submitGuarded } from "./tx.mts";
 import { buildProvisionParams, evaluateVaultPolicy } from "./vault/provisioning.mts";
 import { verifyDeposit } from "./vault/deposit.mts";
 
@@ -333,34 +333,11 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
   }
   const ctx = await buildCtx(cfg);
 
-  // audit N-H1/N-M8: a journaled swap/deposit hash blocks a fresh run unless
-  // provably dead — reverted consumed nothing; a hash whose raw bytes were
-  // never broadcast and are not journaled can never land. Only intents
-  // journaled SINCE the last completed run count — earlier ones are consumed.
-  const lastDone = state.history
-    .filter((h) => h.stage === "DEPOSITED")
-    .map((h) => h.at)
-    .sort()
-    .at(-1);
-  const moneySteps = new Set(["swap", "deposit"]);
-  let doneMoney = false;
-  for (const i of state.intents) {
-    if (!moneySteps.has(i.step) || i.txHash === undefined) continue;
-    if (lastDone !== undefined && i.createdAt <= lastDone) continue;
-    const rcpt = await ctx.client
-      .getTransactionReceipt({ hash: i.txHash })
-      .catch(() => undefined);
-    if (rcpt) {
-      if (rcpt.status === "success") doneMoney = true;
-      continue; // reverted consumed nothing — retry is legitimate
-    }
-    const inFlight = await ctx.client
-      .getTransaction({ hash: i.txHash })
-      .then(() => true)
-      .catch(() => false);
-    if (inFlight || typeof i.params.raw === "string") doneMoney = true;
-    if (doneMoney) break;
-  }
+  // audit N-H1/N-M8/N2-H1+N2-M1: a journaled swap/deposit hash blocks a fresh
+  // run unless marked dead or proven reverted — unproven/unknown outcomes
+  // fail closed. Only intents since the last completed run count.
+  const doneMoneyReason = await liveMoneyIntentReason(ctx.client, state);
+  const doneMoney = doneMoneyReason !== undefined;
 
   // mined hashes from a COMPLETED (DEPOSITED) run are consumed work, not a
   // replay risk — the drill deliberately re-runs against the same vault.
@@ -373,7 +350,7 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
   if (state.stage === "ABORTED") {
     if (doneMoney) {
       throw new Error(
-        "ABORTED run has a mined/unknown swap or deposit hash in the journal — refusing fresh e2e; inspect the journal and reconcile manually",
+        `ABORTED run has a live journaled money action (${doneMoneyReason}) — refusing fresh e2e; inspect the journal and reconcile manually`,
       );
     }
     state = advance(state, "PROVISIONED", "retry after abort");
@@ -384,7 +361,7 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
   if (doneMoney && !journalFromCompletedRun &&
       (state.stage === "PROVISIONED" || state.stage === "QUOTED")) {
     throw new Error(
-      "journal records a mined/in-flight swap or deposit — run 'resume'; a fresh e2e would replay money",
+      `journal records a live money action (${doneMoneyReason}) — run 'resume'; a fresh e2e would replay money`,
     );
   }
   requireStage(state, "PROVISIONED");
