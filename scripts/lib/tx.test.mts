@@ -163,22 +163,64 @@ describe("submitGuarded — sign-before-broadcast (audit C1)", () => {
     expect(broadcasts()).toBe(1);
   });
 
-  test("pending with txHash + no receipt → fail closed, no resend", async () => {
+  test("pending with txHash + no receipt + no tx → provably dead, cleared", async () => {
     const { client, wallet, broadcasts } = mockClients("ok");
     let s = initialState();
     s = recordIntent(s, {
       step: "swap",
       sender: SENDER,
       nonce: 7,
-      params: {},
+      params: {}, // no journaled raw → hash can never land
       createdAt: new Date().toISOString(),
     });
     s = markSubmitted(s, "swap", "0xdeadbeef00000000000000000000000000000000000000000000000000000001");
     saveState(s, stateFile);
     await expect(
       submitGuarded({ ...base(client, wallet, s), request: REQ }),
-    ).rejects.toThrow(/not found on-chain|TX_OUTCOME_UNKNOWN/);
+    ).rejects.toThrow(/never reached the chain/);
     expect(broadcasts()).toBe(0);
+    expect(loadState(stateFile).pending.swap).toBeUndefined();
+  });
+
+  // audit N-H1+N-M8: crash after the atomic save but before broadcast → the
+  // journaled raw is resent verbatim (idempotent by hash), never re-signed.
+  test("never-broadcast hash+raw → rebroadcast identical bytes, no new signature", async () => {
+    const { client, wallet, seen } = mockClients("rejected");
+    const s0 = initialState();
+    saveState(s0, stateFile);
+
+    let signs = 0;
+    const counting = {
+      ...wallet,
+      signTransaction: async (p: unknown) => {
+        signs++;
+        void p;
+        return wallet.signTransaction();
+      },
+    };
+    await expect(
+      submitGuarded({ ...base(client, counting, s0), request: REQ }),
+    ).rejects.toThrow(/broadcast failed/);
+    expect(signs).toBe(1);
+
+    // run 2: pending carries txHash+raw; node knows nothing → the SAME signed
+    // bytes are resent verbatim (seen.add models node acceptance this time).
+    const accepting = {
+      ...(client as Record<string, unknown>),
+      sendRawTransaction: async (a: { serializedTransaction: string }) => {
+        const h = keccak256(a.serializedTransaction as `0x${string}`);
+        seen.add(h);
+        return h;
+      },
+    };
+    const r = await submitGuarded({
+      ...base(client, counting, loadState(stateFile)),
+      request: REQ,
+      client: accepting as never,
+    });
+    expect(r.txHash).toBe(SIGNED_HASH);
+    expect(r.resumed).toBe(true);
+    expect(signs).toBe(1); // no second signature — identical bytes resent
   });
 
   test("receipt bound to sender/target — foreign receipt rejected", async () => {

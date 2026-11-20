@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -156,15 +156,25 @@ describe("acquireLock (audit C2)", () => {
   test("second acquire fails while held; release frees", () => {
     const p = lockPath();
     const rel = acquireLock(p);
-    expect(() => acquireLock(p)).toThrow(/lock held by live pid/);
+    expect(() => acquireLock(p)).toThrow(/lock held/);
     rel();
     const rel2 = acquireLock(p);
     rel2();
   });
 
-  test("stale lock (dead pid) is reclaimed", () => {
+  // audit N-M1: a freshly-created lock file is treated as HELD even with a
+  // dead/empty pid — the creator's pid write may still be in flight.
+  test("fresh lock file (dead pid, <2s) is treated as held", () => {
+    const p = lockPath();
+    writeFileSync(p, "999999999\n");
+    expect(() => acquireLock(p)).toThrow(/lock held/);
+  });
+
+  test("stale lock (dead pid, aged >2s) is reclaimed", () => {
     const p = lockPath();
     writeFileSync(p, "999999999\n"); // implausible live pid
+    const old = new Date(Date.now() - 10_000);
+    utimesSync(p, old, old); // age past the freshness window (N-M1)
     const rel = acquireLock(p);
     rel();
   });

@@ -5,7 +5,7 @@
 // Audit hardening (254-7): exclusive lockfile (pid + stale detection),
 // unique tmp names, CAS version counter, completed intents keep txHash,
 // loadState validates shape and fails closed on malformed files.
-import { existsSync, mkdirSync, openSync, readFileSync, closeSync, renameSync, unlinkSync, writeFileSync, fdatasyncSync, fsyncSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, closeSync, renameSync, unlinkSync, writeFileSync, fdatasyncSync, fsyncSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -66,7 +66,13 @@ export function canTransition(from: Stage, to: Stage): boolean {
   if (from === "ABORTED") return to === "PROVISIONED"; // guarded by caller: no prior swap/deposit txHash
   if (from === "DEPOSITED") return false;
   if (LINEAR_NEXT[from] === to) return true;
-  if (SUBMITTED.has(from) && to === "TX_OUTCOME_UNKNOWN") return true;
+  if (SUBMITTED.has(from)) {
+    // reverted-submit rollback (audit round-2): a step whose tx provably
+    // failed on-chain rewinds exactly one linear stage — used by resume only.
+    const idx = RANK.get(from as (typeof LINEAR_STAGES)[number]);
+    if (idx !== undefined && idx > 0 && to === LINEAR_STAGES[idx - 1]) return true;
+    if (to === "TX_OUTCOME_UNKNOWN") return true;
+  }
   if (from === "TX_OUTCOME_UNKNOWN") {
     return SUBMITTED.has(to) || ["SWAP_VERIFIED", "APPROVED", "DEPOSITED"].includes(to);
   }
@@ -202,20 +208,31 @@ export function acquireLock(path = LOCK_PATH): () => void {
       };
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      // audit N-M1: an empty/just-created lock (pid write still in flight) is
+      // HELD, not stale — only a lock older than 2s whose pid is dead reclaims.
       let stale = false;
       try {
+        const st = statSync(path);
         const pid = Number(readFileSync(path, "utf8").trim());
-        if (pid > 0) {
-          process.kill(pid, 0);
-          stale = false;
-        } else stale = true;
+        const fresh = Date.now() - st.mtimeMs < 2000;
+        if (pid > 0 && !fresh) {
+          try {
+            process.kill(pid, 0);
+          } catch (err) {
+            stale = (err as NodeJS.ErrnoException).code === "ESRCH";
+          }
+        }
       } catch (err) {
-        stale = (err as NodeJS.ErrnoException).code === "ESRCH" || (err as NodeJS.ErrnoException).code === "ENOENT";
+        stale = (err as NodeJS.ErrnoException).code === "ENOENT"; // vanished between open and stat
       }
       if (!stale) {
-        throw new Error(`state lock held by live pid ${readFileSync(path, "utf8").trim()} — another peach-e2e is running`);
+        throw new Error(`state lock held — another peach-e2e run may be active (pid file ${path})`);
       }
-      unlinkSync(path); // reclaim stale lock, retry once
+      try {
+        unlinkSync(path); // reclaim stale lock, retry once
+      } catch {
+        /* raced reclaimer won — next openSync('wx') will EEXIST and throw */
+      }
     }
   }
   throw new Error("state lock could not be acquired");

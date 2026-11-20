@@ -26,6 +26,7 @@ import type { SigningWallet } from "./tx.mts";
 import {
   chainOf,
   ERC20_ABI,
+  FACTORY_ABI,
   publicClientFor,
   readTokenMeta,
   VAULT_ABI,
@@ -79,7 +80,12 @@ export const abortRun = (t: Transcript, state: SpikeState, msg: string): never =
     try {
       saveState(advance(state, "ABORTED", msg));
     } catch {
-      saveState(state);
+      // audit N-M2: on CAS conflict reload the journal and abort that copy
+      try {
+        saveState(advance(loadState(), "ABORTED", msg));
+      } catch {
+        /* even the reload failed — transcript is written; fail closed anyway */
+      }
     }
   }
   throw new Error(msg);
@@ -124,6 +130,17 @@ export async function buildCtx(cfg: ChainConfig): Promise<E2eCtx> {
     token: cfg.vaultDepositToken,
   });
   if (!chk.ok) throw new Error(`vault policy re-check failed: ${chk.failures.join("; ")}`);
+
+  // audit N-M7: state.vault must be the factory's vault for this signer
+  const vaultOfSigner = await client.readContract({
+    address: cfg.factory,
+    abi: FACTORY_ABI,
+    functionName: "vaultOf",
+    args: [account.address],
+  });
+  if (String(vaultOfSigner).toLowerCase() !== state.vault.toLowerCase()) {
+    throw new Error(`vault ${state.vault} != factory.vaultOf(${account.address}) = ${String(vaultOfSigner)}`);
+  }
 
   // M7: token decimals must match on-chain metadata (money-path invariant C)
   const [mIn, mOut] = await Promise.all([
@@ -270,13 +287,23 @@ export async function finishDepositPhase(
   state = d.state;
   t.depositTx = d.txHash;
 
+  // on adoption the fresh `vaultBalBefore` read is post-deposit — the
+  // journaled before-balance is authoritative instead (audit N-M3 path).
+  let depBefore: bigint | null = vaultBalBefore;
+  if (d.resumed) {
+    const journaled = [...state.intents].reverse().find((i) => i.step === "deposit");
+    const raw = journaled?.params.vaultBalBefore;
+    depBefore = typeof raw === "string" ? BigInt(raw) : null;
+  }
   const dv = await verifyDeposit({
     client,
     receipt: d.receipt,
     vault,
     token: usdc.address,
     amount: received,
-    vaultBalanceBefore: vaultBalBefore,
+    vaultBalanceBefore: depBefore,
+    signer,
+    blockNumber: d.receipt.blockNumber,
   });
   t.verifyChecks["deposit"] = dv.checks;
   if (!dv.ok) abortRun(t, state, "deposit verification failed");
@@ -299,31 +326,71 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
     throw new Error("--drill requires PEACH_DRILL=1 in env (deliberate crash-test opt-in)");
   }
   let state = loadState();
-  if (state.stage === "DEPOSITED" && opts.drill) {
+  // audit N-M3: anything pending means a prior run left an intent in flight —
+  // only resume may consume it; a fresh e2e must not sign ahead of adoption.
+  if (Object.values(state.pending).some(Boolean)) {
+    throw new Error("journal has pending intents — run 'resume' to reconcile before a new e2e");
+  }
+  const ctx = await buildCtx(cfg);
+
+  // audit N-H1/N-M8: a journaled swap/deposit hash blocks a fresh run unless
+  // provably dead — reverted consumed nothing; a hash whose raw bytes were
+  // never broadcast and are not journaled can never land. Only intents
+  // journaled SINCE the last completed run count — earlier ones are consumed.
+  const lastDone = state.history
+    .filter((h) => h.stage === "DEPOSITED")
+    .map((h) => h.at)
+    .sort()
+    .at(-1);
+  const moneySteps = new Set(["swap", "deposit"]);
+  let doneMoney = false;
+  for (const i of state.intents) {
+    if (!moneySteps.has(i.step) || i.txHash === undefined) continue;
+    if (lastDone !== undefined && i.createdAt <= lastDone) continue;
+    const rcpt = await ctx.client
+      .getTransactionReceipt({ hash: i.txHash })
+      .catch(() => undefined);
+    if (rcpt) {
+      if (rcpt.status === "success") doneMoney = true;
+      continue; // reverted consumed nothing — retry is legitimate
+    }
+    const inFlight = await ctx.client
+      .getTransaction({ hash: i.txHash })
+      .then(() => true)
+      .catch(() => false);
+    if (inFlight || typeof i.params.raw === "string") doneMoney = true;
+    if (doneMoney) break;
+  }
+
+  // mined hashes from a COMPLETED (DEPOSITED) run are consumed work, not a
+  // replay risk — the drill deliberately re-runs against the same vault.
+  const journalFromCompletedRun = state.stage === "DEPOSITED";
+  if (journalFromCompletedRun && opts.drill) {
     // drill-only reset: reuse the same provisioned vault for a second deposit
     state = { ...state, stage: "PROVISIONED", usdcReceived: undefined };
     saveState(state);
   }
   if (state.stage === "ABORTED") {
-    // audit H1/H2: a run that already broadcast a swap/deposit must NOT be
-    // silently retried as fresh — the money actions need resume/reconcile.
-    const doneMoney = state.intents.some(
-      (i) => (i.step === "swap" || i.step === "deposit") && i.txHash !== undefined,
-    );
     if (doneMoney) {
       throw new Error(
-        "ABORTED run has recorded swap/deposit txHash in the journal — refusing fresh e2e; run 'resume' (or inspect) first",
+        "ABORTED run has a mined/unknown swap or deposit hash in the journal — refusing fresh e2e; inspect the journal and reconcile manually",
       );
     }
     state = advance(state, "PROVISIONED", "retry after abort");
     saveState(state);
   }
+  // N-H1 residual: a mined journaled swap/deposit must never be replayed by
+  // a fresh quote — only 'resume' consumes journaled outcomes.
+  if (doneMoney && !journalFromCompletedRun &&
+      (state.stage === "PROVISIONED" || state.stage === "QUOTED")) {
+    throw new Error(
+      "journal records a mined/in-flight swap or deposit — run 'resume'; a fresh e2e would replay money",
+    );
+  }
   requireStage(state, "PROVISIONED");
   if (state.stage !== "PROVISIONED" && state.stage !== "QUOTED") {
     throw new Error(`stage ${state.stage} already past quote — use 'resume' to reconcile`);
   }
-
-  const ctx = await buildCtx(cfg);
   const { client, api, signer, eurc, usdc, vault } = ctx;
 
   const t: Transcript = {
@@ -427,7 +494,7 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
     if (grantedEurc) {
       // M2: don't leave a standing EURC allowance to the router on abort
       try {
-        await submitGuarded({
+        const rr = await submitGuarded({
           client,
           wallet: ctx.wallet,
           state,
@@ -444,6 +511,7 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
           },
           expectedTo: eurc.address,
         });
+        state = rr.state; // audit N-M2: keep journal version in sync
         t.notes = [...(t.notes ?? []), "EURC allowance revoked after simulation abort"];
       } catch (e) {
         t.notes = [
@@ -491,15 +559,16 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
       value: 0n, // checked == "0" by the safety gate
     },
     expectedTo: cfg.router,
-    onSubmitted: (st) => {
-      const next = advance(st, "SWAP_SUBMITTED", "pending");
-      saveState(next); // crash-window demo: hash+stage persisted before receipt wait
+    // audit N-H1: stage advance lands in the SAME saveState as hash+raw,
+    // before broadcast — no saveState here, submitGuarded persists atomically.
+    onSubmitted: (st) => advance(st, "SWAP_SUBMITTED", "pending"),
+    onBroadcasted: (st) => {
       if (opts.drill) {
+        saveState(st);
         writeTranscript(t);
         console.log("[drill] swap broadcast, exiting before receipt (SWAP_SUBMITTED)");
         process.exit(3);
       }
-      return next;
     },
   });
   state = s.state;

@@ -2,18 +2,25 @@
 // truth (receipt / allowance / vault state). Never resends while a
 // txHash outcome is unknown (D-254-12/19).
 //
-// Audit hardening (254-7):
+// Audit hardening (254-7, rounds 1+2):
 //  - orphan intents (no txHash, legacy format) are reconciled by nonce —
 //    if the chain pending nonce moved past intent.nonce we fail closed (C1);
+//  - a journaled hash with no receipt and no tx is DEAD, not unknown:
+//    if raw bytes were journaled they are rebroadcast verbatim (idempotent
+//    by hash); otherwise the step rolls back one stage and re-runs (N-M8);
+//  - a reverted receipt rolls the stage back one step — the financial
+//    action provably consumed nothing, retry is legitimate (N-M8);
+//  - adopted outcomes are consumed whatever the stage: a mined swap at
+//    QUOTED advances to SWAP_SUBMITTED and is verified, never replayed
+//    (N-H1 — the round-2 regression fix);
 //  - swap/deposit verification uses JOURNALED intent params (amountOutMin,
 //    balances, vaultBalBefore) or archive reads at the receipt block —
 //    never reconstructed-tautology deltas; unmeasurable checks are marked
-//    `skipped`, not `ok` (H3, M5);
-//  - reverted approve/deposit no longer wedge the FSM — resume retries the
-//    leg with a fresh intent (M3); missing usdcReceived refuses (M6).
+//    `skipped` (H3, M5);
+//  - receipt binding: from==sender AND to==intent.params.to (M5, N-L3).
 import type { TransactionReceipt } from "viem";
 import type { ChainConfig } from "./config.mts";
-import { ERC20_ABI } from "./chain.mts";
+import { ERC20_ABI, FACTORY_ABI } from "./chain.mts";
 import {
   buildCtx,
   finishDepositPhase,
@@ -30,11 +37,13 @@ import {
   clearPending,
   loadState,
   saveState,
+  type PendingTx,
   type SpikeState,
+  type Stage,
   type TxIntent,
   type TxStep,
 } from "./state.mts";
-import { reconcileOrphanIntent } from "./tx.mts";
+import { reconcileHashedPending, reconcileOrphanIntent } from "./tx.mts";
 import { verifyDeposit } from "./vault/deposit.mts";
 import { join } from "node:path";
 import { EVIDENCE_DIR } from "./config.mts";
@@ -46,6 +55,85 @@ interface PendingOutcome {
   txHash: `0x${string}`;
   receipt: TransactionReceipt;
   intent: TxIntent;
+}
+
+/** Linear stage each step's *SUBMITTED stage rolls back to on a dead tx. */
+const ROLLBACK: Partial<Record<TxStep, { submitted: Stage; back: Stage }>> = {
+  swap: { submitted: "SWAP_SUBMITTED", back: "QUOTED" },
+  approve: { submitted: "APPROVE_SUBMITTED", back: "SWAP_VERIFIED" },
+  deposit: { submitted: "DEPOSIT_SUBMITTED", back: "APPROVED" },
+};
+
+const STAGE_ORDER: Stage[] = [
+  "INIT",
+  "PROVISIONED",
+  "QUOTED",
+  "SWAP_SUBMITTED",
+  "SWAP_VERIFIED",
+  "APPROVE_SUBMITTED",
+  "APPROVED",
+  "DEPOSIT_SUBMITTED",
+  "DEPOSITED",
+];
+
+const stageRank = (s: Stage): number => {
+  const i = STAGE_ORDER.indexOf(s);
+  return i === -1 ? 99 : i; // side stages sort past DEPOSITED
+};
+
+function bindReceipt(
+  step: TxStep,
+  txHash: `0x${string}`,
+  rcpt: TransactionReceipt,
+  intent: TxIntent,
+): void {
+  if (rcpt.from.toLowerCase() !== intent.sender.toLowerCase()) {
+    throw new Error(`${step} tx ${txHash} from ${rcpt.from} != intent sender ${intent.sender}`);
+  }
+  // audit N-L3: the journaled target must match the receipt's
+  const wantTo = typeof intent.params.to === "string" ? intent.params.to.toLowerCase() : "";
+  if (wantTo && (rcpt.to ?? "").toLowerCase() !== wantTo) {
+    throw new Error(`${step} tx ${txHash} to ${rcpt.to} != journaled ${intent.params.to}`);
+  }
+}
+
+/**
+ * Reconcile one journaled hash (pending or archived intent). Adopts a mined
+ * receipt, throws on in-flight, and clears+rolls back on a provably dead tx
+ * (reverted or never-landed). Returns the outcome for mined txs.
+ */
+async function reconcileHash(
+  ctx: E2eCtx,
+  state: SpikeState,
+  step: TxStep,
+  pend: PendingTx,
+): Promise<{ state: SpikeState; outcome?: PendingOutcome }> {
+  const r = await reconcileHashedPending(ctx.client, step, pend);
+  if (r.status === "in-flight") {
+    throw new Error(
+      `${step} tx ${pend.txHash} exists but no receipt — in flight, resend forbidden (D-254-12); retry later`,
+    );
+  }
+  if (r.status === "reverted" || r.status === "never-sent") {
+    // provably dead: consumed nothing — clear and roll the FSM back so the
+    // step can be re-planned legitimately (audit N-M8).
+    if (step in (state.pending as Record<TxStep, unknown>)) {
+      state = clearPending(state, step);
+    }
+    const rb = ROLLBACK[step];
+    if (rb && state.stage === rb.submitted) {
+      state = advance(state, rb.back, `${step} tx ${r.status}`);
+    }
+    saveState(state);
+    return { state };
+  }
+  const rcpt = r.receipt!;
+  bindReceipt(step, pend.txHash!, rcpt, pend.intent);
+  if (step in (state.pending as Record<TxStep, unknown>)) {
+    state = clearPending(state, step);
+    saveState(state);
+  }
+  return { state, outcome: { step, txHash: pend.txHash!, receipt: rcpt, intent: pend.intent } };
 }
 
 async function reconcilePending(
@@ -61,45 +149,18 @@ async function reconcilePending(
       saveState(state);
       continue;
     }
-    const rcpt = await ctx.client
-      .getTransactionReceipt({ hash: pend.txHash })
-      .catch(() => undefined);
-    if (!rcpt) {
-      const tx = await ctx.client
-        .getTransaction({ hash: pend.txHash })
-        .catch(() => undefined);
-      if (tx) {
-        throw new Error(
-          `TX_OUTCOME_UNKNOWN-ish: ${step} tx ${pend.txHash} exists but no receipt — in flight, resend forbidden (D-254-12); retry later`,
-        );
-      }
-      throw new Error(
-        `TX_OUTCOME_UNKNOWN: ${step} tx ${pend.txHash} not found on-chain — check nonce/chain manually before any resend`,
-      );
-    }
-    // bind the adopted receipt to its intent (audit M5)
-    if (rcpt.from.toLowerCase() !== pend.intent.sender.toLowerCase()) {
-      throw new Error(
-        `${step} tx ${pend.txHash} from ${rcpt.from} != intent sender ${pend.intent.sender}`,
-      );
-    }
-    if (rcpt.status !== "success") {
-      state = clearPending(state, step);
-      saveState(state);
-      throw new Error(`${step} tx ${pend.txHash} reverted — pending cleared, re-run allowed`);
-    }
-    state = clearPending(state, step);
-    saveState(state);
-    outcomes.push({ step, txHash: pend.txHash, receipt: rcpt, intent: pend.intent });
+    const r = await reconcileHash(ctx, state, step, pend);
+    state = r.state;
+    if (r.outcome) outcomes.push(r.outcome);
   }
   return { state, outcomes };
 }
 
 /**
- * Audit H1: a crash between receipt-persist (pending cleared → intent lands in
- * `intents` WITH txHash) and the post-verification advance leaves a stage like
- * SWAP_SUBMITTED with no pending entry. Re-derive the outcome from the
- * journaled hash instead of declaring the journal stuck.
+ * Audit H1: a crash between pending-clear and post-verify advance leaves a
+ * stage like SWAP_SUBMITTED whose proof lives in `intents[]`, not `pending`.
+ * Audit N-H1/N-M4: distinguish mined / in-flight / provably dead — an RPC
+ * error is never read as "reverted".
  */
 async function adoptJournaled(
   ctx: E2eCtx,
@@ -108,14 +169,41 @@ async function adoptJournaled(
 ): Promise<PendingOutcome | undefined> {
   const done = [...state.intents].reverse().find((i) => i.step === step && i.txHash !== undefined);
   if (!done?.txHash) return undefined;
-  const rcpt = await ctx.client
-    .getTransactionReceipt({ hash: done.txHash })
-    .catch(() => undefined);
-  if (!rcpt || rcpt.status !== "success") return undefined;
-  if (rcpt.from.toLowerCase() !== done.sender.toLowerCase()) {
-    throw new Error(`${step} journaled tx ${done.txHash} from ${rcpt.from} != intent sender`);
+  const pend: PendingTx = { intent: done, txHash: done.txHash };
+  const r = await reconcileHash(ctx, state, step, pend);
+  // dead journaled hash → undefined: caller may retry the leg legitimately
+  return r.outcome;
+}
+
+/**
+ * Audit N-H1 fix (round 2): whatever stage the FSM is in, adopted outcomes
+ * advance it to each step's SUBMITTED stage so the flow verifies — never
+ * replays — already-broadcast work.
+ */
+function consumeOutcomes(state: SpikeState, outcomes: PendingOutcome[]): SpikeState {
+  const SUBMIT_STAGE: Partial<Record<TxStep, Stage>> = {
+    swap: "SWAP_SUBMITTED",
+    approve: "APPROVE_SUBMITTED",
+    deposit: "DEPOSIT_SUBMITTED",
+  };
+  let changed = false;
+  // side-stage normalize: adopted money outcomes must not be bypassed by a
+  // re-quote detour — REQUOTE_REQUIRED returns to the linear rail first.
+  // (ABORTED stays put: its guard + operator decide.)
+  if (state.stage === "REQUOTE_REQUIRED" && outcomes.length > 0) {
+    state = advance(state, "QUOTED", "adopted outcomes pending verification");
+    changed = true;
   }
-  return { step, txHash: done.txHash, receipt: rcpt, intent: done };
+  for (const o of outcomes) {
+    const target = SUBMIT_STAGE[o.step];
+    if (!target) continue;
+    if (stageRank(state.stage) < stageRank(target)) {
+      state = advance(state, target, `adopted ${o.txHash}`);
+      changed = true;
+    }
+  }
+  if (changed) saveState(state);
+  return state;
 }
 
 function transcriptFor(state: SpikeState, ctx: E2eCtx): Transcript {
@@ -138,20 +226,43 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
   // 1) reconcile every persisted pending tx against chain truth
   const rec = await reconcilePending(ctx, state);
   state = rec.state;
+
+  // 1b) a mined provision adopts the vault into the journal
+  const provOut = rec.outcomes.find((o) => o.step === "provision");
+  if (provOut && state.stage === "INIT") {
+    const v = (await ctx.client.readContract({
+      address: cfg.factory,
+      abi: FACTORY_ABI,
+      functionName: "vaultOf",
+      args: [ctx.signer],
+    }).catch(() => undefined)) as `0x${string}` | undefined;
+    if (v && v !== "0x0000000000000000000000000000000000000000") {
+      state = { ...state, vault: v };
+      state = advance(state, "PROVISIONED", `adopted vault ${v}`);
+      saveState(state);
+    }
+  }
+
+  // 2) audit N-H1: consumed outcomes advance the stage to the step's
+  //    SUBMITTED stage so dispatch below verifies — never replays — them.
+  state = consumeOutcomes(state, rec.outcomes);
+
   const t = transcriptFor(state, ctx);
 
-  // 2) dispatch by stage — continue the flow, never re-do done work
+  // 3) dispatch by stage — continue the flow, never re-do done work
   switch (state.stage) {
     case "DEPOSITED": {
       t.result = "DEPOSITED (already complete)";
       writeTranscript(t, RESUME_TRANSCRIPT);
       return t;
     }
-    case "INIT":
+    case "INIT": {
+      throw new Error("stage INIT — run 'provision' first");
+    }
     case "PROVISIONED":
     case "QUOTED":
     case "ABORTED": {
-      // safe to take the fresh path — nothing financial pending
+      // safe to take the fresh path — all pendings reconciled above
       // (ABORTED runs through the journal guard inside runE2E)
       return runE2E(cfg);
     }
@@ -213,6 +324,9 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
     }
     case "APPROVE_SUBMITTED":
     case "APPROVED": {
+      // audit N-H1: a mined deposit adopted at APPROVED was consumed by
+      // consumeOutcomes → stage DEPOSIT_SUBMITTED. Reaching here means no
+      // deposit is in flight — finish the leg.
       const received = requiredReceived(state);
       const adoptedApprove = rec.outcomes.find((o) => o.step === "approve");
       if (adoptedApprove) {
@@ -229,7 +343,8 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
         rec.outcomes.find((o) => o.step === "deposit") ??
         (await adoptJournaled(ctx, state, "deposit"));
       if (!dep) {
-        // prior deposit reverted (pending cleared, nothing mined) — retry the leg (M3)
+        // audit N-M4: reached only for a provably dead deposit (reverted or
+        // never-landed — an RPC error throws earlier). Retry the leg (M3).
         const received = requiredReceived(state);
         await finishDepositPhase(ctx, state, t, received);
         writeTranscript(t, RESUME_TRANSCRIPT);
@@ -262,6 +377,7 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
         amount: received,
         vaultBalanceBefore: balBefore,
         signer: ctx.signer,
+        blockNumber: dep.receipt.blockNumber,
       });
       t.depositTx = dep.txHash;
       t.verifyChecks["deposit"] = dv.checks;

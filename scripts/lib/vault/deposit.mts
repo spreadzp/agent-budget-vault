@@ -20,6 +20,9 @@ export async function verifyDeposit(args: {
   /** null when unknowable post-hoc — the delta check is then skipped, not faked */
   vaultBalanceBefore: bigint | null;
   signer?: `0x${string}`;
+  /** audit N-M6: read balances at this block (receipt block on resume) — a
+   *  vault that streams out makes a latest-block read falsely fail */
+  blockNumber?: bigint;
 }): Promise<DepositVerifyResult> {
   const checks: VerifyCheck[] = [];
   const { client, receipt, vault } = args;
@@ -62,14 +65,17 @@ export async function verifyDeposit(args: {
       abi: ERC20_ABI,
       functionName: "balanceOf",
       args: [vault],
+      ...(args.blockNumber !== undefined ? { blockNumber: args.blockNumber } : {}),
     }),
     client.readContract({ address: vault, abi: VAULT_POLICY_ABI, functionName: "policy" }) as Promise<VaultPolicy>,
   ]);
 
   if (args.vaultBalanceBefore === null) {
+    // audit N-M6: skipped checks fail a naive `.ok` filter — they carry
+    // ok:false + skipped:true and the aggregator treats them as non-blocking.
     checks.push({
       name: "vault token balance += amount",
-      ok: true,
+      ok: false,
       skipped: true,
       detail: `skipped — before-balance unknown post-hoc; current ${bal}`,
     });

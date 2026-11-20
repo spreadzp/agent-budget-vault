@@ -120,11 +120,13 @@ export function evaluateSwapSafety(args: {
       ? yes("expect≈route.amount_out", `${swap.expect_amount_out} vs ${route.amount_out} (drift ${drift}ppm)`)
       : no("expect≈route.amount_out", `drift ${drift}ppm > ${EXPECT_DRIFT_PPM}ppm`),
   );
-  const dev = Number(route.deviation_ratio ?? "");
+  // audit N-M5: a MISSING deviation_ratio is a failure, not a free pass —
+  // Number(undefined ?? "") is 0, so absence must be checked explicitly.
+  const dev = route.deviation_ratio === undefined ? NaN : Number(route.deviation_ratio);
   checks.push(
     Number.isFinite(dev) && Math.abs(dev) <= DEVIATION_BOUND
       ? yes("deviation_ratio bounded", String(route.deviation_ratio))
-      : no("deviation_ratio", `${route.deviation_ratio} malformed or |dev| > ${DEVIATION_BOUND}`),
+      : no("deviation_ratio", `${route.deviation_ratio} missing/malformed or |dev| > ${DEVIATION_BOUND}`),
   );
   checks.push(
     BigInt(swap.tx.amount_out_min) >= expectedMin && BigInt(swap.tx.amount_out_min) > 0n

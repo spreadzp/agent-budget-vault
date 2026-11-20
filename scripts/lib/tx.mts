@@ -1,8 +1,10 @@
-// Guarded broadcast per D-254-12, hardened after the 254-7 audit (C1):
-// the tx is signed LOCALLY first, and the txHash (derivable from the signed
-// payload) is persisted BEFORE any network send. A crash anywhere after that
-// point leaves pending.txHash on disk, so the next run reconciles by hash and
-// can never broadcast a second copy of the financial action.
+// Guarded broadcast per D-254-12, hardened after the 254-7 audit (C1, round-2 N-H1):
+// the tx is signed LOCALLY, and txHash + stage advance + the raw signed bytes
+// are persisted in ONE saveState BEFORE any network send. Consequences:
+//  - a crash anywhere after that save leaves stage + hash + raw consistent;
+//  - the raw bytes make "hash journaled, never broadcast" self-healing:
+//    resending identical bytes is idempotent by hash (audit N-M8);
+//  - no window exists where the stage lags a live broadcast (audit N-H1).
 //
 // Legacy orphans (pending intent with no txHash, pre-hardening format) are
 // reconciled by nonce: if the chain pending nonce is past intent.nonce, a tx
@@ -30,7 +32,7 @@ export interface GuardedTx {
   state: SpikeState;
   txHash: `0x${string}`;
   receipt: TransactionReceipt;
-  resumed: boolean; // true when adopted from a prior pending entry
+  resumed: boolean; // true when adopted/rebroadcast from a prior pending entry
 }
 
 export interface TxRequest {
@@ -53,6 +55,12 @@ export async function reconcileOrphanIntent(
   step: TxStep,
   pend: PendingTx,
 ): Promise<"drop"> {
+  // audit N-L1: the orphan must belong to this sender for the nonce proof
+  if (pend.intent.sender.toLowerCase() !== sender.toLowerCase()) {
+    throw new Error(
+      `orphan ${step} intent sender ${pend.intent.sender} != signer ${sender} — refusing to decide`,
+    );
+  }
   const pendingNonce = await client.getTransactionCount({
     address: sender,
     blockTag: "pending",
@@ -66,39 +74,79 @@ export async function reconcileOrphanIntent(
   return "drop";
 }
 
+/**
+ * A persisted txHash with no receipt: in-flight if the node knows it,
+ * else rebroadcast the identical journaled raw bytes (idempotent by hash).
+ * Returns the receipt when the tx provably landed, or undefined when it
+ * provably never did. Throws only when the outcome is genuinely unknown.
+ */
+export async function reconcileHashedPending(
+  client: PublicClient,
+  step: TxStep,
+  pend: PendingTx,
+): Promise<{ receipt?: TransactionReceipt; status: "mined" | "reverted" | "in-flight" | "never-sent" }> {
+  const hash = pend.txHash!;
+  const rcpt = await client.getTransactionReceipt({ hash }).catch(() => undefined);
+  if (rcpt) {
+    return { receipt: rcpt, status: rcpt.status === "success" ? "mined" : "reverted" };
+  }
+  const inFlight = await client.getTransaction({ hash }).then(() => true).catch(() => false);
+  if (inFlight) return { status: "in-flight" };
+  // no receipt, no tx: never reached the node — rebroadcast identical bytes if present
+  const raw = typeof pend.intent.params.raw === "string" ? (pend.intent.params.raw as `0x${string}`) : undefined;
+  if (raw === undefined) return { status: "never-sent" };
+  try {
+    await client.sendRawTransaction({ serializedTransaction: raw });
+  } catch {
+    // "already known" races are fine; anything else means the signed tx is dead
+    // (nonce consumed by a different tx) — still never-sent by this hash.
+    const rc = await client.getTransactionReceipt({ hash }).catch(() => undefined);
+    if (rc) return { receipt: rc, status: rc.status === "success" ? "mined" : "reverted" };
+    return { status: "never-sent" };
+  }
+  const rc = await client
+    .waitForTransactionReceipt({ hash, timeout: 60_000 })
+    .catch(() => undefined);
+  if (!rc) return { status: "in-flight" };
+  return { receipt: rc, status: rc.status === "success" ? "mined" : "reverted" };
+}
+
 async function adoptPending(args: {
   client: PublicClient;
   step: TxStep;
   pend: PendingTx;
   sender: `0x${string}`;
   expectedTo?: `0x${string}`;
-}): Promise<{ receipt: TransactionReceipt } | never> {
+}): Promise<{ receipt: TransactionReceipt } | { dead: "reverted" | "never-sent" } | never> {
   const { client, step, pend } = args;
-  const rcpt = await client
-    .getTransactionReceipt({ hash: pend.txHash! })
-    .catch(() => undefined);
-  if (!rcpt) {
-    const tx = await client.getTransaction({ hash: pend.txHash! }).catch(() => undefined);
+  const r = await reconcileHashedPending(client, step, pend);
+  if (r.status === "in-flight") {
     throw new Error(
-      tx
-        ? `${step} tx ${pend.txHash} exists but no receipt — in flight, resend forbidden (D-254-12); retry later`
-        : `${step} tx ${pend.txHash} not found on-chain — TX_OUTCOME_UNKNOWN; check nonce/chain manually before any resend`,
+      `${step} tx ${pend.txHash} exists but no receipt — in flight, resend forbidden (D-254-12); retry later`,
     );
   }
+  if (r.status === "never-sent") {
+    return { dead: "never-sent" };
+  }
+  if (r.status === "reverted") {
+    return { dead: "reverted" };
+  }
+  const rcpt = r.receipt!;
   // bind the receipt to this intent (audit M5): right sender, right target
   if (rcpt.from.toLowerCase() !== args.sender.toLowerCase()) {
     throw new Error(`${step} tx ${pend.txHash} from ${rcpt.from} != signer ${args.sender}`);
   }
-  const wantTo = (args.expectedTo ?? "").toLowerCase();
+  const wantTo = (args.expectedTo ?? (pend.intent.params.to as string | undefined) ?? "").toLowerCase();
   if (wantTo && (rcpt.to ?? "").toLowerCase() !== wantTo) {
-    throw new Error(`${step} tx ${pend.txHash} to ${rcpt.to} != expected ${args.expectedTo}`);
+    throw new Error(`${step} tx ${pend.txHash} to ${rcpt.to} != expected ${args.expectedTo ?? pend.intent.params.to}`);
   }
   return { receipt: rcpt };
 }
 
 /**
- * Replay-protected send. `request` is signed and the hash journaled before
- * broadcast; pending.txHash is never absent while anything may be in flight.
+ * Replay-protected send. `request` is signed; hash + stage + raw bytes are
+ * journaled atomically before broadcast; adopted pendings are bound to the
+ * intent's sender/target.
  */
 export async function submitGuarded(args: {
   client: PublicClient;
@@ -110,8 +158,13 @@ export async function submitGuarded(args: {
   request: TxRequest;
   /** receipt.to must equal this (defaults to request.to) — audit M5 */
   expectedTo?: `0x${string}`;
-  /** FSM advance applied right after broadcast, while tx is in flight. */
+  /**
+   * FSM advance applied to the SAME save as the txHash — runs BEFORE
+   * broadcast (audit N-H1). Must be idempotent on re-entry stages.
+   */
   onSubmitted?: (state: SpikeState) => SpikeState;
+  /** fired after the broadcast attempt (drill/crash simulation hook). */
+  onBroadcasted?: (state: SpikeState) => void;
   /** journal path override — tests only; production uses STATE_PATH */
   statePath?: string;
 }): Promise<GuardedTx> {
@@ -120,19 +173,27 @@ export async function submitGuarded(args: {
   const pend = state.pending[step];
 
   if (pend?.txHash) {
-    const { receipt: rcpt } = await adoptPending({
+    const out = await adoptPending({
       client,
       step,
       pend,
       sender: args.sender,
       expectedTo: args.expectedTo ?? request.to,
     });
+    if ("dead" in out) {
+      // Provably dead: reverted on-chain, or never reached the node — a hash
+      // whose signed bytes never left this journal can never land later.
+      // Clearing is safe; the stage rollback is the caller's/resume's job.
+      state = clearPending(state, step);
+      saveState(state, statePath);
+      throw new Error(
+        `${step} tx ${pend.txHash} ${out.dead === "reverted" ? "reverted" : "never reached the chain"} — ` +
+          `pending cleared; re-run allowed`,
+      );
+    }
     state = clearPending(state, step);
     saveState(state, statePath);
-    if (rcpt.status !== "success") {
-      throw new Error(`${step} tx ${pend.txHash} reverted — pending cleared; re-run allowed`);
-    }
-    return { state, txHash: pend.txHash, receipt: rcpt, resumed: true };
+    return { state, txHash: pend.txHash, receipt: out.receipt, resumed: true };
   }
   if (pend) {
     await reconcileOrphanIntent(client, args.sender, step, pend);
@@ -150,38 +211,37 @@ export async function submitGuarded(args: {
   const raw = await wallet.signTransaction(prepared);
   const txHash = keccak256(raw);
 
-  // 2) persist intent AND hash before any network send — crash window closed
+  // 2) ONE atomic save: intent + txHash + raw bytes + stage advance — all
+  // persisted before any network send (audit N-H1). raw is signed payload,
+  // not key material; it is needed for idempotent rebroadcast (N-M8).
   state = recordIntent(state, {
     step,
     sender: args.sender,
     nonce: prepared.nonce ?? 0,
-    params: args.params,
+    params: { ...args.params, raw, to: request.to },
     createdAt: new Date().toISOString(),
   });
   state = markSubmitted(state, step, txHash);
+  if (args.onSubmitted) state = args.onSubmitted(state);
   saveState(state, statePath);
 
-  // 3) broadcast
+  // 3) broadcast the identical signed bytes
+  let broadcastErr: unknown;
   try {
     await client.sendRawTransaction({ serializedTransaction: raw });
   } catch (e) {
-    // maybe sent (timeout/dropped response) — the hash is on disk; adopt if
-    // the node already has it, else keep the intent for resume to reconcile.
-    const rcpt = await client
-      .getTransactionReceipt({ hash: txHash })
-      .catch(() => undefined);
+    // response lost — node may still have it; the hash is on disk either way
+    broadcastErr = e;
+  }
+  if (args.onBroadcasted) args.onBroadcasted(state);
+  if (broadcastErr !== undefined) {
+    const rcpt = await client.getTransactionReceipt({ hash: txHash }).catch(() => undefined);
     if (!rcpt) {
       throw new Error(
-        `${step} broadcast failed (${e instanceof Error ? e.message.slice(0, 120) : String(e)}) — ` +
-          `tx ${txHash} persisted with hash; outcome unknown, resend forbidden until reconciled`,
+        `${step} broadcast failed (${broadcastErr instanceof Error ? broadcastErr.message.slice(0, 120) : String(broadcastErr)}) — ` +
+          `tx ${txHash} persisted (hash+raw); resume will rebroadcast identical bytes or reconcile`,
       );
     }
-  }
-
-  // 4) stage advance after broadcast ack (hash already on disk — safe if this throws)
-  if (args.onSubmitted) {
-    state = args.onSubmitted(state);
-    saveState(state, statePath);
   }
 
   const receipt = await client.waitForTransactionReceipt({ hash: txHash });

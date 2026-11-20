@@ -95,16 +95,19 @@ export function verifySwap(args: {
   });
 
   if (args.balanceBefore === null || args.balanceAfter === null) {
+    // audit N-M6: ok:false + skipped:true — a naive `.ok` filter cannot
+    // mistake a skipped check for a passed one; the aggregator below
+    // treats skipped as non-blocking.
     checks.push(
       {
         name: "delta tokenIn == events",
-        ok: true,
+        ok: false,
         skipped: true,
         detail: "skipped — balances not measurable post-hoc (no journal/archive)",
       },
       {
         name: "delta tokenOut == events - gas",
-        ok: true,
+        ok: false,
         skipped: true,
         detail: "skipped — balances not measurable post-hoc (no journal/archive)",
       },

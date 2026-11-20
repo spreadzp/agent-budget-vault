@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-20T09:15:22.755Z",
+  "at": "2026-11-20T09:39:09.097Z",
   "vault": "0x1eD696AfE80770E5662A17f8365e9e0b1AbA26AE",
   "signer": "0x9264365408D363E7f142828f063077d7ab7C41d9",
   "amountIn": "5000000",
@@ -7,7 +7,7 @@
   "approveTxs": [
     {
       "step": "approve_usdc",
-      "txHash": "0x9c5163844c437f68a80c453b655e78543941ffb932fd1a604e3173dc2aeb0489"
+      "txHash": "0xdf2aeffd9381dabf5fefa5c9ed9fb6defb323ebfab6f7cf0ffe289aa85be4365"
     }
   ],
   "verifyChecks": {
@@ -35,7 +35,7 @@
       {
         "name": "Transfer(tokenOut) signer in >= amountOutMin",
         "ok": true,
-        "detail": "11828565 >= 11769422"
+        "detail": "10460183 >= 10407882"
       },
       {
         "name": "delta tokenIn == events",
@@ -45,7 +45,7 @@
       {
         "name": "delta tokenOut == events - gas",
         "ok": true,
-        "detail": "delta 11816313 vs events 11828565 - gas 12251 (±4)"
+        "detail": "delta 10446211 vs events 10460183 - gas 13972 (±4)"
       }
     ],
     "deposit": [
@@ -60,14 +60,19 @@
         "detail": "0x1ed696afe80770e5662a17f8365e9e0b1aba26ae vs 0x1eD696AfE80770E5662A17f8365e9e0b1AbA26AE"
       },
       {
+        "name": "receipt.from==signer",
+        "ok": true,
+        "detail": "0x9264365408d363e7f142828f063077d7ab7c41d9"
+      },
+      {
         "name": "Deposited event",
         "ok": true,
-        "detail": "amount=11828565"
+        "detail": "amount=10460183"
       },
       {
         "name": "vault token balance += amount",
         "ok": true,
-        "detail": "28997980 -> 40826545"
+        "detail": "40826545 -> 51286728"
       },
       {
         "name": "stream active (rate>0,startTime>0)",
@@ -77,7 +82,7 @@
       {
         "name": "endTime > startTime",
         "ok": true,
-        "detail": "end=1803290790 start=1795125482"
+        "detail": "end=1805382826 start=1795125482"
       },
       {
         "name": "not cancelled",
@@ -94,7 +99,7 @@
   "notes": [
     "resume run — txHashes adopted from persisted intents"
   ],
-  "swapTx": "0xcd814b24281af80834c603cd0458c921ab1dd22e9c0d48dfb508fb9e9b8e5939",
-  "depositTx": "0xb05a18e6009776d4c62618b716a1bb6b41e7137ea2867bf8a7285f3bdc333f72",
+  "swapTx": "0x758710f6d45427d7c3c9ed89e113bf3670bc76b6ddb2f493ba6eb82c27f36b60",
+  "depositTx": "0xf29c17ccedc07aa12c4eeaa4398cb721b926b99528568614742519f7a3c76651",
   "result": "DEPOSITED"
 }
