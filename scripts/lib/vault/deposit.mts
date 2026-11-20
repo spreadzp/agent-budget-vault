@@ -1,10 +1,14 @@
 // SLICE-254-4: deposit + full stream-state verification (D-254-18).
+// Audit hardening (254-7): receipt bound to vault+signer (M5), balance-delta
+// check can be `skipped` (not faked ok) when the before-balance is unknown
+// on a post-hoc resume (H3).
 import type { PublicClient, TransactionReceipt } from "viem";
 import { ERC20_ABI, VAULT_ABI, VAULT_POLICY_ABI, type VaultPolicy } from "../chain.mts";
+import type { VerifyCheck } from "../peach/verification.mts";
 
 export interface DepositVerifyResult {
   ok: boolean;
-  checks: { name: string; ok: boolean; detail: string }[];
+  checks: VerifyCheck[];
 }
 
 export async function verifyDeposit(args: {
@@ -13,9 +17,11 @@ export async function verifyDeposit(args: {
   vault: `0x${string}`;
   token: `0x${string}`;
   amount: bigint;
-  vaultBalanceBefore: bigint;
+  /** null when unknowable post-hoc — the delta check is then skipped, not faked */
+  vaultBalanceBefore: bigint | null;
+  signer?: `0x${string}`;
 }): Promise<DepositVerifyResult> {
-  const checks: DepositVerifyResult["checks"] = [];
+  const checks: VerifyCheck[] = [];
   const { client, receipt, vault } = args;
 
   checks.push({
@@ -23,6 +29,18 @@ export async function verifyDeposit(args: {
     ok: receipt.status === "success",
     detail: receipt.status,
   });
+  checks.push({
+    name: "receipt.to==vault",
+    ok: (receipt.to ?? "").toLowerCase() === vault.toLowerCase(),
+    detail: `${receipt.to} vs ${vault}`,
+  });
+  if (args.signer) {
+    checks.push({
+      name: "receipt.from==signer",
+      ok: receipt.from.toLowerCase() === args.signer.toLowerCase(),
+      detail: receipt.from,
+    });
+  }
 
   const events = await client.getContractEvents({
     address: vault,
@@ -48,11 +66,20 @@ export async function verifyDeposit(args: {
     client.readContract({ address: vault, abi: VAULT_POLICY_ABI, functionName: "policy" }) as Promise<VaultPolicy>,
   ]);
 
-  checks.push({
-    name: "vault token balance += amount",
-    ok: bal - args.vaultBalanceBefore === args.amount,
-    detail: `${args.vaultBalanceBefore} -> ${bal}`,
-  });
+  if (args.vaultBalanceBefore === null) {
+    checks.push({
+      name: "vault token balance += amount",
+      ok: true,
+      skipped: true,
+      detail: `skipped — before-balance unknown post-hoc; current ${bal}`,
+    });
+  } else {
+    checks.push({
+      name: "vault token balance += amount",
+      ok: bal - args.vaultBalanceBefore === args.amount,
+      detail: `${args.vaultBalanceBefore} -> ${bal}`,
+    });
+  }
   checks.push({
     name: "stream active (rate>0,startTime>0)",
     ok: policy.rate > 0n && policy.startTime > 0n,
@@ -68,6 +95,11 @@ export async function verifyDeposit(args: {
     ok: !policy.cancelled,
     detail: `cancelled=${policy.cancelled}`,
   });
+  checks.push({
+    name: "not paused",
+    ok: !policy.paused,
+    detail: `paused=${policy.paused}`,
+  });
 
-  return { ok: checks.every((c) => c.ok), checks };
+  return { ok: checks.every((c) => c.skipped === true || c.ok), checks };
 }

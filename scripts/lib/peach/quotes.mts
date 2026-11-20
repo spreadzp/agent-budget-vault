@@ -2,14 +2,32 @@
 // Money values are bigint everywhere; JSON boundary serializes as strings.
 import type { ApiFindRouteData } from "@masterpeach/arc-aggregator-sdk";
 
+/** Strict BigInt for API-returned unit strings — rejects ""/"0x10"/"1.5". */
+export function strictUnits(raw: string, label = "units"): bigint {
+  if (!/^\d+$/.test(raw)) throw new Error(`bad ${label}: ${JSON.stringify(raw)}`);
+  return BigInt(raw);
+}
+
 export function toTokenUnits(decimal: string, decimals: number): bigint {
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) {
+    throw new Error(`bad decimals: ${decimals}`);
+  }
   const m = /^(\d+)(?:\.(\d+))?$/.exec(decimal.trim());
   if (!m) throw new Error(`bad decimal amount: ${decimal}`);
-  const frac = (m[2] ?? "").padEnd(decimals, "0").slice(0, decimals);
-  return BigInt(m[1]) * 10n ** BigInt(decimals) + BigInt(frac === "" ? 0 : frac);
+  if ((m[2] ?? "").length > decimals) {
+    throw new Error(`over-precision: ${decimal} exceeds ${decimals} decimals`);
+  }
+  const frac = (m[2] ?? "").padEnd(decimals, "0");
+  const v = BigInt(m[1]) * 10n ** BigInt(decimals) + BigInt(frac === "" ? 0 : frac);
+  if (v <= 0n) throw new Error(`amount must be > 0: ${decimal}`);
+  return v;
 }
 
 export function minAmountOut(expectOut: bigint, slippageBps: number): bigint {
+  if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > 10_000) {
+    throw new Error(`bad slippageBps: ${slippageBps}`);
+  }
+  if (expectOut <= 0n) throw new Error("expectOut must be > 0");
   return (expectOut * BigInt(10_000 - slippageBps)) / 10_000n;
 }
 
@@ -137,7 +155,7 @@ export function buildSweepArtifact(args: {
     chainId: args.chainId,
     tokenIn: args.tokenIn,
     tokenOut: args.tokenOut,
-    slippageBps: 50,
+    slippageBps: args.runs[0]?.slippageBps ?? 50,
     sizes: args.sizes,
     sdkVersion: args.sdkVersion,
     gitCommit: args.gitCommit,

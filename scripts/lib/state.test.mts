@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  acquireLock,
   advance,
   canTransition,
   clearPending,
@@ -38,9 +39,9 @@ describe("FSM enum (D-254-11)", () => {
       "DEPOSIT_SUBMITTED",
       "DEPOSITED",
     ];
-    for (const s of linear) expect(STAGES).toContain(s);
+    for (const s of linear) expect(STAGES as readonly string[]).toContain(s);
     for (const s of ["REQUOTE_REQUIRED", "TX_OUTCOME_UNKNOWN", "ABORTED"])
-      expect(STAGES).toContain(s);
+      expect(STAGES as readonly string[]).toContain(s);
     expect(STAGES[0]).toBe("INIT");
   });
 
@@ -96,6 +97,29 @@ describe("persistence", () => {
   test("loadState on missing file returns INIT", () => {
     expect(loadState(join(tmpdir(), "nope-254.json")).stage).toBe("INIT");
   });
+
+  // audit M4: malformed files fail closed instead of silently resetting
+  test("loadState rejects malformed stage", () => {
+    const p = tmpStatePath();
+    writeFileSync(p, JSON.stringify({ stage: "BOGUS" }));
+    expect(() => loadState(p)).toThrow(/bad stage/);
+  });
+
+  test("loadState rejects malformed pending entry", () => {
+    const p = tmpStatePath();
+    writeFileSync(p, JSON.stringify({ stage: "DEPOSITED", pending: { swap: 5 } }));
+    expect(() => loadState(p)).toThrow(/malformed pending/);
+  });
+
+  // audit C2: CAS version counter — a stale in-memory copy can't overwrite
+  test("saveState CAS conflict on out-of-sync writer", () => {
+    const p = tmpStatePath();
+    const a = initialState();
+    saveState(a, p); // a.version -> 1
+    const b = loadState(p); // b.version == 1
+    saveState(b, p); // b.version -> 2
+    expect(() => saveState(a, p)).toThrow(/CAS conflict/);
+  });
 });
 
 describe("pending tx-intents (D-254-12)", () => {
@@ -117,6 +141,32 @@ describe("pending tx-intents (D-254-12)", () => {
     s = clearPending(s, "provision");
     expect(s.pending.provision).toBeUndefined();
     expect(s.intents[s.intents.length - 1]?.nonce).toBe(7);
+    // audit H1/H2: the journal keeps the broadcast hash for the ABORTED guard
+    expect(s.intents[s.intents.length - 1]?.txHash).toBe("0xdead");
+  });
+});
+
+describe("acquireLock (audit C2)", () => {
+  function lockPath(): string {
+    const d = mkdtempSync(join(tmpdir(), "peach-lock-"));
+    tmpDirs.push(d);
+    return join(d, "peach-e2e.lock");
+  }
+
+  test("second acquire fails while held; release frees", () => {
+    const p = lockPath();
+    const rel = acquireLock(p);
+    expect(() => acquireLock(p)).toThrow(/lock held by live pid/);
+    rel();
+    const rel2 = acquireLock(p);
+    rel2();
+  });
+
+  test("stale lock (dead pid) is reclaimed", () => {
+    const p = lockPath();
+    writeFileSync(p, "999999999\n"); // implausible live pid
+    const rel = acquireLock(p);
+    rel();
   });
 });
 

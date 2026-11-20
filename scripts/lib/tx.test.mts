@@ -1,0 +1,207 @@
+// Regression tests for audit C1 (254-7): the txHash must be persisted BEFORE
+// broadcast, and an adopted/orphaned intent must never produce a second send.
+import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { keccak256, type TransactionReceipt } from "viem";
+import {
+  initialState,
+  loadState,
+  markSubmitted,
+  recordIntent,
+  saveState,
+  type SpikeState,
+} from "./state.mts";
+import { submitGuarded } from "./tx.mts";
+
+const SENDER = "0x9264365408D363E7f142828f063077d7ab7C41d9" as const;
+const TO = "0x3600000000000000000000000000000000000000" as const;
+const REQ = { to: TO, data: "0xa9059cbb" as `0x${string}` };
+const SIGNED = "0x02f8b0deadbeefcafe" as `0x${string}`;
+const SIGNED_HASH = keccak256(SIGNED);
+
+const dirs: string[] = [];
+let stateFile = "";
+beforeEach(() => {
+  const d = mkdtempSync(join(tmpdir(), "peach-tx-"));
+  dirs.push(d);
+  stateFile = join(d, "state.json");
+});
+afterEach(() => {
+  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
+});
+
+const okReceipt = (hash: string, over: Partial<TransactionReceipt> = {}) =>
+  ({
+    status: "success",
+    transactionHash: hash,
+    from: SENDER,
+    to: TO,
+    logs: [],
+    ...over,
+  }) as unknown as TransactionReceipt;
+
+/** mode: ok | lost-response (node accepted, reply lost) | rejected (never arrived) */
+function mockClients(mode: "ok" | "lost-response" | "rejected" = "ok", pendingNonce = 7) {
+  let broadcasts = 0;
+  const seen = new Set<string>();
+  const wallet = {
+    account: { address: SENDER },
+    prepareTransactionRequest: async () => ({ nonce: 7 }),
+    signTransaction: async () => SIGNED,
+  };
+  const client = {
+    getTransactionCount: async () => pendingNonce,
+    getTransactionReceipt: async ({ hash }: { hash: string }) => {
+      if (!seen.has(hash)) throw new Error("not found");
+      return okReceipt(hash);
+    },
+    getTransaction: async ({ hash }: { hash: string }) => {
+      if (!seen.has(hash)) throw new Error("not found");
+      return { hash };
+    },
+    sendRawTransaction: async ({ serializedTransaction }: { serializedTransaction: string }) => {
+      broadcasts++;
+      const h = keccak256(serializedTransaction as `0x${string}`);
+      if (mode !== "rejected") seen.add(h);
+      if (mode === "ok") return h;
+      throw new Error(mode === "lost-response" ? "HTTP timeout" : "connection refused");
+    },
+    waitForTransactionReceipt: async ({ hash }: { hash: string }) => okReceipt(hash),
+  };
+  return { wallet, client, broadcasts: () => broadcasts, seen };
+}
+
+const base = (client: unknown, wallet: unknown, state: SpikeState) => ({
+  client: client as never,
+  wallet: wallet as never,
+  state,
+  step: "swap" as const,
+  sender: SENDER,
+  params: { amountIn: "5000000" },
+  request: REQ,
+  statePath: stateFile,
+});
+
+describe("submitGuarded — sign-before-broadcast (audit C1)", () => {
+  test("txHash is persisted to disk before broadcast", async () => {
+    const { client, wallet } = mockClients("ok");
+    let observed: string | undefined;
+    const wrapped = {
+      ...client,
+      sendRawTransaction: async (a: { serializedTransaction: string }) => {
+        const onDisk = loadState(stateFile);
+        observed = onDisk.pending.swap?.txHash;
+        return client.sendRawTransaction(a);
+      },
+    };
+    const s0 = initialState();
+    saveState(s0, stateFile);
+    const r = await submitGuarded({ ...base(wrapped, wallet, s0), request: REQ });
+    expect(r.txHash).toBe(SIGNED_HASH);
+    expect(observed).toBe(SIGNED_HASH);
+  });
+
+  test("lost response → receipt found in catch → adopt, no second send", async () => {
+    const { client, wallet, broadcasts } = mockClients("lost-response");
+    const s0 = initialState();
+    saveState(s0, stateFile);
+    const r = await submitGuarded({ ...base(client, wallet, s0), request: REQ });
+    expect(r.txHash).toBe(SIGNED_HASH);
+    expect(broadcasts()).toBe(1);
+  });
+
+  test("rejected → hash still on disk → next run adopts by hash, zero re-send", async () => {
+    const { client, wallet, broadcasts, seen } = mockClients("rejected");
+    const s0 = initialState();
+    saveState(s0, stateFile);
+
+    await expect(
+      submitGuarded({ ...base(client, wallet, s0), request: REQ }),
+    ).rejects.toThrow(/broadcast failed|outcome unknown/);
+    const onDisk = loadState(stateFile);
+    expect(onDisk.pending.swap?.txHash).toBe(SIGNED_HASH);
+
+    // node accepted it after all — run 2 must adopt, never re-send
+    seen.add(SIGNED_HASH);
+    const r = await submitGuarded({ ...base(client, wallet, loadState(stateFile)), request: REQ });
+    expect(r.resumed).toBe(true);
+    expect(r.txHash).toBe(SIGNED_HASH);
+    expect(broadcasts()).toBe(1); // one broadcast total — the first
+  });
+
+  test("orphan intent (no txHash) + pending nonce moved → refuse resend", async () => {
+    const { client, wallet } = mockClients("ok", 8);
+    let s = initialState();
+    s = recordIntent(s, {
+      step: "swap",
+      sender: SENDER,
+      nonce: 7,
+      params: {},
+      createdAt: new Date().toISOString(),
+    });
+    saveState(s, stateFile);
+    await expect(
+      submitGuarded({ ...base(client, wallet, s), request: REQ }),
+    ).rejects.toThrow(/possible broadcast|Refusing resend/i);
+  });
+
+  test("orphan intent + nonce unchanged → drop and send fresh", async () => {
+    const { client, wallet, broadcasts } = mockClients("ok", 7);
+    let s = initialState();
+    s = recordIntent(s, {
+      step: "swap",
+      sender: SENDER,
+      nonce: 7,
+      params: {},
+      createdAt: new Date().toISOString(),
+    });
+    saveState(s, stateFile);
+    const r = await submitGuarded({ ...base(client, wallet, s), request: REQ });
+    expect(r.resumed).toBe(false);
+    expect(broadcasts()).toBe(1);
+  });
+
+  test("pending with txHash + no receipt → fail closed, no resend", async () => {
+    const { client, wallet, broadcasts } = mockClients("ok");
+    let s = initialState();
+    s = recordIntent(s, {
+      step: "swap",
+      sender: SENDER,
+      nonce: 7,
+      params: {},
+      createdAt: new Date().toISOString(),
+    });
+    s = markSubmitted(s, "swap", "0xdeadbeef00000000000000000000000000000000000000000000000000000001");
+    saveState(s, stateFile);
+    await expect(
+      submitGuarded({ ...base(client, wallet, s), request: REQ }),
+    ).rejects.toThrow(/not found on-chain|TX_OUTCOME_UNKNOWN/);
+    expect(broadcasts()).toBe(0);
+  });
+
+  test("receipt bound to sender/target — foreign receipt rejected", async () => {
+    const { client, wallet } = mockClients("ok");
+    let s = initialState();
+    s = recordIntent(s, {
+      step: "swap",
+      sender: SENDER,
+      nonce: 7,
+      params: {},
+      createdAt: new Date().toISOString(),
+    });
+    s = markSubmitted(s, "swap", "0xdeadbeef00000000000000000000000000000000000000000000000000000001");
+    saveState(s, stateFile);
+    const foreign = {
+      ...client,
+      getTransactionReceipt: async () =>
+        okReceipt("0xdeadbeef00000000000000000000000000000000000000000000000000000001", {
+          from: "0x00000000000000000000000000000000000000ff",
+        }),
+    };
+    await expect(
+      submitGuarded({ ...base(foreign, wallet, s), request: REQ }),
+    ).rejects.toThrow(/!= signer/);
+  });
+});

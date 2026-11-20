@@ -17,15 +17,33 @@ import { runE2E } from "./lib/e2e.mts";
 import { negExpiredQuote, negInsufficientEurc, negWrongChain } from "./lib/neg.mts";
 import { runResume } from "./lib/resume.mts";
 import { cirbtcUsdSizes, runSweep, writeSweepArtifact } from "./lib/peach/sweep.mts";
+import { acquireLock } from "./lib/state.mts";
 
 import { runStatus, writeEvidence } from "./lib/status.mts";
 import { provision } from "./lib/vault/provisioning.mts";
 
 const log = (...a: unknown[]) => console.log(`[${new Date().toISOString()}]`, ...a);
 
+// Commands that mutate the FSM journal must hold the exclusive lock — two
+// concurrent runs racing the journal are a double-send vector (audit C2).
+const JOURNAL_CMDS = new Set(["provision", "e2e", "resume"]);
+
 async function main(): Promise<void> {
   const { cmd, args } = parseCommand(process.argv.slice(2));
   const cfg = loadSpikeConfig();
+  const release = JOURNAL_CMDS.has(cmd) ? acquireLock() : undefined;
+  try {
+    await dispatch(cmd, args, cfg);
+  } finally {
+    release?.();
+  }
+}
+
+async function dispatch(
+  cmd: string,
+  args: string[],
+  cfg: ReturnType<typeof loadSpikeConfig>,
+): Promise<void> {
 
   if (cmd === "status") {
     const res = await runStatus(cfg);

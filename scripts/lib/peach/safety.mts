@@ -1,5 +1,9 @@
 // SLICE-254-4: pre-sign checklist (D-254-8) — every divergence aborts
 // BEFORE any signature. Pure evaluation + optional on-chain simulation.
+// Audit hardening (254-7, C3): tx.value must be 0 (Arc native is USDC — a
+// non-zero value spends gas-token without a Transfer event), tx.data must
+// be non-empty, and the swap payload is cross-checked against the
+// independent findRoutes quote (amount_in / expect_amount_out / deviation).
 import type { ApiRoutePath, ApiSwapData } from "@masterpeach/arc-aggregator-sdk";
 import type { PublicClient } from "viem";
 import type { ChainConfig, TokenConfig } from "../config.mts";
@@ -15,10 +19,25 @@ const eq = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 const yes = (name: string, detail: string): SafetyCheck => ({ name, ok: true, detail });
 const no = (name: string, detail: string): SafetyCheck => ({ name, ok: false, detail });
 
+/** |a-b|*1e6 / max(a,b) — relative deviation in ppm, bigint-only. */
+function ppm(a: bigint, b: bigint): bigint {
+  const hi = a > b ? a : b;
+  if (hi === 0n) return 0n;
+  const d = a > b ? a - b : b - a;
+  return (d * 1_000_000n) / hi;
+}
+
+/** Max allowed |deviation_ratio| from the quote — beyond this, treat as garbage. */
+const DEVIATION_BOUND = 0.5;
+/** Max allowed relative drift between swap.expect_amount_out and route.amount_out. */
+const EXPECT_DRIFT_PPM = 50_000n; // 5%
+
 export function evaluateSwapSafety(args: {
   swap: ApiSwapData;
   /** Route-preview paths from findRoutes — tokenIn/Out checks (V1 swap omits paths). */
   paths: ApiRoutePath[];
+  /** The independent findRoutes response — cross-checks vs swap claims (C3). */
+  route: { amount_in: string; amount_out: string; deviation_ratio?: string };
   cfg: ChainConfig;
   rpcChainId: number;
   signer: `0x${string}`;
@@ -29,7 +48,7 @@ export function evaluateSwapSafety(args: {
   nowSecs: number;
   simulatedOk: boolean | null;
 }): SafetyCheck[] {
-  const { swap, cfg, signer } = args;
+  const { swap, cfg, signer, route } = args;
   const checks: SafetyCheck[] = [];
   const router = swap.contracts.execution_router;
   const firstPath = args.paths[0];
@@ -50,6 +69,18 @@ export function evaluateSwapSafety(args: {
     eq(router, cfg.router)
       ? yes("router==config", router)
       : no("router!=config", `${router} vs ${cfg.router}`),
+  );
+  // Arc native balance IS the USDC pool — a non-zero msg.value spends it
+  // silently, outside any Transfer-event trail.
+  checks.push(
+    swap.tx.value === "0" || swap.tx.value === "0x0"
+      ? yes("tx.value==0", swap.tx.value)
+      : no("tx.value!=0", `calldata carries msg.value ${swap.tx.value} — would spend native USDC`),
+  );
+  checks.push(
+    typeof swap.tx.data === "string" && swap.tx.data.length > 10
+      ? yes("tx.data non-empty", `${swap.tx.data.slice(0, 10)}…`)
+      : no("tx.data", "empty/short calldata"),
   );
   checks.push(
     eq(swap.payer, signer) && eq(swap.executor, signer)
@@ -75,6 +106,25 @@ export function evaluateSwapSafety(args: {
     BigInt(swap.amount_in) === args.amountIn
       ? yes("amountIn", args.amountIn.toString())
       : no("amountIn", `${swap.amount_in} != ${args.amountIn}`),
+  );
+  // cross-response consistency: the executable swap claims must match the
+  // independently fetched route quote (different API call, same session).
+  checks.push(
+    route.amount_in === swap.amount_in
+      ? yes("route.amount_in==swap.amount_in", route.amount_in)
+      : no("route.amount_in", `${route.amount_in} != ${swap.amount_in}`),
+  );
+  const drift = ppm(BigInt(swap.expect_amount_out), BigInt(route.amount_out));
+  checks.push(
+    drift <= EXPECT_DRIFT_PPM
+      ? yes("expect≈route.amount_out", `${swap.expect_amount_out} vs ${route.amount_out} (drift ${drift}ppm)`)
+      : no("expect≈route.amount_out", `drift ${drift}ppm > ${EXPECT_DRIFT_PPM}ppm`),
+  );
+  const dev = Number(route.deviation_ratio ?? "");
+  checks.push(
+    Number.isFinite(dev) && Math.abs(dev) <= DEVIATION_BOUND
+      ? yes("deviation_ratio bounded", String(route.deviation_ratio))
+      : no("deviation_ratio", `${route.deviation_ratio} malformed or |dev| > ${DEVIATION_BOUND}`),
   );
   checks.push(
     BigInt(swap.tx.amount_out_min) >= expectedMin && BigInt(swap.tx.amount_out_min) > 0n

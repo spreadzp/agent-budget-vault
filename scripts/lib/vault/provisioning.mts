@@ -1,10 +1,12 @@
 // SLICE-254-2: `provision` — create ONE testnet BudgetVault via factory.
 // Idempotent by construction (update note): state reuse + on-chain
 // vaultOf[agent] lookup-before-create; replay-protected per D-254-12.
+// Audit hardening (254-7): broadcast goes through submitGuarded
+// (sign-before-send, hash persisted first — C1) and the vault policy check
+// pins the full expected tuple, not just owner+token (H5).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createWalletClient, getAddress, http, type PublicClient } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { createWalletClient, encodeFunctionData, getAddress, http, type PublicClient } from "viem";
 import {
   chainOf,
   FACTORY_ABI,
@@ -13,16 +15,9 @@ import {
   type VaultPolicy,
 } from "../chain.mts";
 import { EVIDENCE_DIR, type ChainConfig } from "../config.mts";
-import { requiredEnv } from "../env.mts";
-import {
-  advance,
-  clearPending,
-  loadState,
-  markSubmitted,
-  recordIntent,
-  saveState,
-  type SpikeState,
-} from "../state.mts";
+import { accountFromEnv } from "../env.mts";
+import { advance, clearPending, loadState, saveState, type SpikeState } from "../state.mts";
+import { reconcileOrphanIntent, submitGuarded } from "../tx.mts";
 
 const ZERO = "0x0000000000000000000000000000000000000000" as const;
 const PROVISION_EVIDENCE = join(EVIDENCE_DIR, "provision.json");
@@ -39,16 +34,35 @@ export function buildProvisionParams(signer: `0x${string}`): ProvisionParams {
   return { owner: signer, agent: signer, agentId: 254n, registry: ZERO, operator: ZERO };
 }
 
+/**
+ * Full expected-tuple check (audit H5): every field createVault was called
+ * with must match, plus the vault must not be cancelled or paused.
+ */
 export function evaluateVaultPolicy(
   p: VaultPolicy,
-  expected: { owner: `0x${string}`; token: `0x${string}` },
+  expected: {
+    owner: `0x${string}`;
+    token: `0x${string}`;
+    agent?: `0x${string}`;
+    agentId?: bigint;
+    registry?: `0x${string}`;
+    operator?: `0x${string}`;
+  },
 ): { ok: boolean; failures: string[] } {
   const failures: string[] = [];
-  if (p.owner.toLowerCase() !== expected.owner.toLowerCase())
-    failures.push(`owner ${p.owner} != expected ${expected.owner}`);
-  if (p.token.toLowerCase() !== expected.token.toLowerCase())
-    failures.push(`token ${p.token} != expected ${expected.token}`);
+  const eq = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  if (!eq(p.owner, expected.owner)) failures.push(`owner ${p.owner} != expected ${expected.owner}`);
+  if (!eq(p.token, expected.token)) failures.push(`token ${p.token} != expected ${expected.token}`);
+  if (expected.agent !== undefined && !eq(p.agent, expected.agent))
+    failures.push(`agent ${p.agent} != expected ${expected.agent}`);
+  if (expected.agentId !== undefined && p.agentId !== expected.agentId)
+    failures.push(`agentId ${p.agentId} != expected ${expected.agentId}`);
+  if (expected.registry !== undefined && !eq(p.registry, expected.registry))
+    failures.push(`registry ${p.registry} != expected ${expected.registry}`);
+  if (expected.operator !== undefined && !eq(p.operator, expected.operator))
+    failures.push(`operator ${p.operator} != expected ${expected.operator}`);
   if (p.cancelled) failures.push("vault is cancelled");
+  if (p.paused) failures.push("vault is paused");
   return { ok: failures.length === 0, failures };
 }
 
@@ -87,14 +101,11 @@ export async function provision(
   if (chainId !== cfg.chainId)
     throw new Error(`post-check chainId: RPC reports ${chainId}, expected ${cfg.chainId}`);
 
-  const account = privateKeyToAccount(
-    (requiredEnv(signerEnv).startsWith("0x")
-      ? requiredEnv(signerEnv)
-      : `0x${requiredEnv(signerEnv)}`) as `0x${string}`,
-  );
+  const account = accountFromEnv(signerEnv);
   const signer = account.address;
   let state = loadState();
   const expectedToken = cfg.vaultDepositToken;
+  const expectedPolicy = { ...buildProvisionParams(signer), token: expectedToken };
 
   const adoptVault = async (
     vault: `0x${string}`,
@@ -102,7 +113,7 @@ export async function provision(
     reused: boolean,
   ): Promise<ProvisionResult> => {
     const policy = await readPolicy(client, vault);
-    const chk = evaluateVaultPolicy(policy, { owner: signer, token: expectedToken });
+    const chk = evaluateVaultPolicy(policy, expectedPolicy);
     if (!chk.ok) throw new Error(`vault post-checks failed: ${chk.failures.join("; ")}`);
     if (state.stage === "INIT") state = advance(state, "PROVISIONED", `vault ${vault}`);
     state = { ...state, vault };
@@ -119,8 +130,11 @@ export async function provision(
         owner: policy.owner,
         agent: policy.agent,
         agentId: policy.agentId.toString(),
+        registry: policy.registry,
+        operator: policy.operator,
         token: policy.token,
         cancelled: policy.cancelled,
+        paused: policy.paused,
       },
       postChecks: "ok",
     });
@@ -130,7 +144,7 @@ export async function provision(
   // 0) already provisioned -> verify still good on-chain
   if (state.vault) {
     const policy = await readPolicy(client, state.vault);
-    const chk = evaluateVaultPolicy(policy, { owner: signer, token: expectedToken });
+    const chk = evaluateVaultPolicy(policy, expectedPolicy);
     if (chk.ok) return { vault: state.vault, reused: true, policy };
   }
 
@@ -144,6 +158,9 @@ export async function provision(
       throw new Error(
         `provision tx ${pend.txHash} in flight / no receipt — resend forbidden (D-254-12); retry later`,
       );
+    }
+    if (rcpt.from.toLowerCase() !== signer.toLowerCase() || (rcpt.to ?? "").toLowerCase() !== cfg.factory.toLowerCase()) {
+      throw new Error(`provision tx ${pend.txHash} receipt does not match intent (from/to)`);
     }
     if (rcpt.status !== "success") {
       state = persistState(clearPending(state, "provision"));
@@ -160,7 +177,7 @@ export async function provision(
     return adoptVault(vault, pend.txHash, true);
   }
   if (pend) {
-    // intent persisted but never broadcast — safe to replace
+    await reconcileOrphanIntent(client, signer, "provision", pend);
     state = persistState(clearPending(state, "provision"));
   }
 
@@ -173,38 +190,32 @@ export async function provision(
   }));
   if (existing !== ZERO) return adoptVault(existing, undefined, true);
 
-  // 3) create: persist tx-intent BEFORE broadcast (D-254-12)
+  // 3) create: sign locally, persist intent+txHash BEFORE broadcast (C1)
   const params = buildProvisionParams(signer);
-  const nonce = await client.getTransactionCount({ address: signer });
-  state = persistState(
-    recordIntent(state, {
-      step: "provision",
-      sender: signer,
-      nonce,
-      params: { ...params, agentId: params.agentId.toString(), factory: cfg.factory },
-      createdAt: new Date().toISOString(),
-    }),
-  );
-
   const wallet = createWalletClient({
     account,
     chain: chainOf(cfg),
     transport: http(cfg.rpcUrl),
   });
-  const txHash = await wallet.writeContract({
-    address: cfg.factory,
-    abi: FACTORY_ABI,
-    functionName: "createVault",
-    args: [params.owner, params.agent, params.agentId, params.registry, params.operator],
-    chain: chainOf(cfg),
+  const r = await submitGuarded({
+    client,
+    wallet,
+    state,
+    step: "provision",
+    sender: signer,
+    params: { ...params, agentId: params.agentId.toString(), factory: cfg.factory },
+    request: {
+      to: cfg.factory,
+      data: encodeFunctionData({
+        abi: FACTORY_ABI,
+        functionName: "createVault",
+        args: [params.owner, params.agent, params.agentId, params.registry, params.operator],
+      }),
+    },
+    expectedTo: cfg.factory,
   });
-  state = persistState(markSubmitted(state, "provision", txHash));
+  state = r.state;
 
-  const rcpt = await client.waitForTransactionReceipt({ hash: txHash });
-  if (rcpt.status !== "success") {
-    state = persistState(clearPending(state, "provision"));
-    throw new Error(`createVault tx ${txHash} reverted — pending cleared, re-run allowed`);
-  }
   const vault = getAddress(
     (await client.readContract({
       address: cfg.factory,
@@ -213,6 +224,5 @@ export async function provision(
       args: [signer],
     })),
   );
-  state = persistState(clearPending(state, "provision"));
-  return adoptVault(vault, txHash, false);
+  return adoptVault(vault, r.txHash, false);
 }

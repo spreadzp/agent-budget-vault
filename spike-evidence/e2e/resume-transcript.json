@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-19T22:02:28.170Z",
+  "at": "2026-11-20T09:15:22.755Z",
   "vault": "0x1eD696AfE80770E5662A17f8365e9e0b1AbA26AE",
   "signer": "0x9264365408D363E7f142828f063077d7ab7C41d9",
   "amountIn": "5000000",
@@ -7,7 +7,7 @@
   "approveTxs": [
     {
       "step": "approve_usdc",
-      "txHash": "0x3d9d7d70e9d68fbfb78f29aa43150cd367275799d2160aa79782edb37cb3fc5a"
+      "txHash": "0x9c5163844c437f68a80c453b655e78543941ffb932fd1a604e3173dc2aeb0489"
     }
   ],
   "verifyChecks": {
@@ -18,6 +18,16 @@
         "detail": "success"
       },
       {
+        "name": "receipt.from==signer",
+        "ok": true,
+        "detail": "0x9264365408d363e7f142828f063077d7ab7c41d9"
+      },
+      {
+        "name": "receipt.to==router",
+        "ok": true,
+        "detail": "0x5ff56925140d6f5912c8ca6593f2c3bc28190607 vs 0x5FF56925140D6f5912C8Ca6593f2C3BC28190607"
+      },
+      {
         "name": "Transfer(tokenIn) signer out",
         "ok": true,
         "detail": "5000000 (amount_in 5000000)"
@@ -25,7 +35,7 @@
       {
         "name": "Transfer(tokenOut) signer in >= amountOutMin",
         "ok": true,
-        "detail": "13484252 >= 1"
+        "detail": "11828565 >= 11769422"
       },
       {
         "name": "delta tokenIn == events",
@@ -35,7 +45,7 @@
       {
         "name": "delta tokenOut == events - gas",
         "ok": true,
-        "detail": "delta 13470075 vs events 13484252 - gas 14177 (±4)"
+        "detail": "delta 11816313 vs events 11828565 - gas 12251 (±4)"
       }
     ],
     "deposit": [
@@ -45,14 +55,19 @@
         "detail": "success"
       },
       {
+        "name": "receipt.to==vault",
+        "ok": true,
+        "detail": "0x1ed696afe80770e5662a17f8365e9e0b1aba26ae vs 0x1eD696AfE80770E5662A17f8365e9e0b1AbA26AE"
+      },
+      {
         "name": "Deposited event",
         "ok": true,
-        "detail": "amount=13484252"
+        "detail": "amount=11828565"
       },
       {
         "name": "vault token balance += amount",
         "ok": true,
-        "detail": "15513728 -> 28997980"
+        "detail": "28997980 -> 40826545"
       },
       {
         "name": "stream active (rate>0,startTime>0)",
@@ -62,20 +77,24 @@
       {
         "name": "endTime > startTime",
         "ok": true,
-        "detail": "end=1800925077 start=1795125482"
+        "detail": "end=1803290790 start=1795125482"
       },
       {
         "name": "not cancelled",
         "ok": true,
         "detail": "cancelled=false"
+      },
+      {
+        "name": "not paused",
+        "ok": true,
+        "detail": "paused=false"
       }
     ]
   },
   "notes": [
-    "resume run — txHashes adopted from persisted intents",
-    "post-hoc resume: balanceBefore reconstructed from events+gas (delta check is consistency-only; events/receipt remain on-chain truth)"
+    "resume run — txHashes adopted from persisted intents"
   ],
-  "swapTx": "0xcb1adf380cadbfba9e6b3f2498bc2f14aea5e02074f7957f19e1feefac3b7e36",
-  "depositTx": "0x835d5fa526013426ed71900802326608d7df31bc5c88b79441d9fc7837902964",
+  "swapTx": "0xcd814b24281af80834c603cd0458c921ab1dd22e9c0d48dfb508fb9e9b8e5939",
+  "depositTx": "0xb05a18e6009776d4c62618b716a1bb6b41e7137ea2867bf8a7285f3bdc333f72",
   "result": "DEPOSITED"
 }

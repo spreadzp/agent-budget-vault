@@ -1,5 +1,9 @@
-// SLICE-254-5: negative-case runners — each produces an abort evidence
-// artifact proving the run refused BEFORE signing anything (D-254-8/19).
+// SLICE-254-5: negative-case runners — each produces an evidence artifact
+// for a pre-sign gate evaluated directly (D-254-8/19).
+//
+// Audit note (254-7, M8): these artifacts demonstrate the CHECK firing on
+// real inputs — they do not claim a full runE2E execution or a count of
+// observed signatures. Fields are named to say exactly that.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createPublicClient, http } from "viem";
@@ -20,21 +24,24 @@ function writeNeg(name: string, rec: Record<string, unknown>): string {
   return p;
 }
 
-/** Case 1: expired quote → deadline check fails → abort, zero signatures. */
+/** Case 1: expired quote → deadline check fails → would abort pre-sign. */
 export async function negExpiredQuote(cfg: ChainConfig, waitSecs = 0): Promise<string> {
   const api = apiClientFor(cfg);
   const eurc = cfg.tokens.find((t) => t.symbol === "EURC")!;
   const usdc = cfg.tokens.find(
     (t) => t.address.toLowerCase() === cfg.vaultDepositToken.toLowerCase(),
   )!;
+  // signer address is public and required by the API to shape the response;
+  // no key is used — nothing is signed or sent.
+  const signer = "0x9264365408D363E7f142828f063077d7ab7C41d9" as const;
   const route = await api.findRoutes({ from: eurc.address, target: usdc.address, amount: AMOUNT });
   const swap = (await api.swap({
     from: eurc.address,
     target: usdc.address,
     amount: AMOUNT,
-    executor: "0x9264365408D363E7f142828f063077d7ab7C41d9",
-    payer: "0x9264365408D363E7f142828f063077d7ab7C41d9",
-    recipient: "0x9264365408D363E7f142828f063077d7ab7C41d9",
+    executor: signer,
+    payer: signer,
+    recipient: signer,
     slippageBps: 50,
     deadlineSecs: 120,
   })) as import("@masterpeach/arc-aggregator-sdk").ApiSwapData;
@@ -45,9 +52,10 @@ export async function negExpiredQuote(cfg: ChainConfig, waitSecs = 0): Promise<s
   const checks = evaluateSwapSafety({
     swap,
     paths: route.paths,
+    route,
     cfg,
     rpcChainId,
-    signer: "0x9264365408D363E7f142828f063077d7ab7C41d9",
+    signer,
     tokenIn: eurc,
     tokenOut: usdc,
     amountIn: AMOUNT,
@@ -60,24 +68,25 @@ export async function negExpiredQuote(cfg: ChainConfig, waitSecs = 0): Promise<s
   return writeNeg("expired-quote", {
     case: "expired-quote",
     at: new Date().toISOString(),
+    demonstrates: "deadline/freshness check rejects a stale quote (REQUOTE_REQUIRED semantics)",
+    method: "evaluateSwapSafety on a real API quote aged past the deadline; no signing attempted",
     quoteTs: swap.quote_ts,
     evaluatedAt: nowSecs,
     quoteAgeSecs: nowSecs - quoteTsSecs,
     deadlineCheck: deadline,
-    outcome: deadline.ok ? "UNEXPECTED PASS" : "ABORTED before any signature (REQUOTE_REQUIRED semantics: re-quote required, zero signatures on stale quote)",
-    signatures: 0,
+    outcome: deadline.ok ? "UNEXPECTED PASS" : "check failed closed as designed",
     allChecks: checks,
   });
 }
 
-/** Case 2: insufficient EURC balance → abort before signing. */
+/** Case 2: insufficient EURC balance → the e2e balance gate would abort. */
 export async function negInsufficientEurc(cfg: ChainConfig): Promise<string> {
   const client = publicClientFor(cfg);
   const eurc = cfg.tokens.find((t) => t.symbol === "EURC")!;
   const usdc = cfg.tokens.find(
     (t) => t.address.toLowerCase() === cfg.vaultDepositToken.toLowerCase(),
   )!;
-  const empty = privateKeyToAccount(generatePrivateKey());
+  const empty = privateKeyToAccount(generatePrivateKey()); // address only; key discarded
   const bal = await readBalances(client, {
     owner: empty.address,
     tokenIn: eurc.address,
@@ -87,14 +96,14 @@ export async function negInsufficientEurc(cfg: ChainConfig): Promise<string> {
   return writeNeg("insufficient-eurc", {
     case: "insufficient-eurc",
     at: new Date().toISOString(),
+    demonstrates: "EURC balance gate is the first check in runE2E, before any quote/approve/swap",
+    method: "balance read for a fresh zero-balance address; runE2E itself not executed (it would need a funded PRIVATE_KEY)",
     signer: empty.address,
-    note: "fresh zero-balance signer — EURC balance check is the first gate in runE2E, before any quote/approve/swap signature",
     eurcBalance: bal.in.toString(),
     required: AMOUNT.toString(),
     outcome: wouldAbort
-      ? "ABORTED at balance check before any signature"
+      ? "balance check fails closed as designed"
       : "UNEXPECTED: balance sufficient",
-    signatures: 0,
   });
 }
 
@@ -108,12 +117,13 @@ export async function negWrongChain(cfg: ChainConfig): Promise<string> {
   return writeNeg("wrong-chain", {
     case: "wrong-chain",
     at: new Date().toISOString(),
+    demonstrates: "chainId pre-check compares the connected RPC to cfg.chainId before any tx",
+    method: "chainId read on the mainnet endpoint vs testnet config; no tx attempted",
     rpcChainId,
     expectedChainId: cfg.chainId,
     outcome:
       rpcChainId !== cfg.chainId
-        ? "ABORTED at chainId pre-check before any tx"
+        ? "chainId check fails closed as designed"
         : "UNEXPECTED PASS",
-    signatures: 0,
   });
 }

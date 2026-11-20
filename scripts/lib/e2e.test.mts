@@ -5,17 +5,17 @@ import { evaluateSwapSafety } from "./peach/safety.mts";
 import { verifySwap } from "./peach/verification.mts";
 import type { ChainConfig, TokenConfig } from "./config.mts";
 
-const SIGNER = "0x9264365408D363E7f142828f063077d7ab7C41d9";
-const ROUTER = "0x5FF56925140D6f5912C8Ca6593f2C3BC28190607";
-const EURC = "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a";
-const USDC = "0x3600000000000000000000000000000000000000";
+const SIGNER = "0x9264365408D363E7f142828f063077d7ab7C41d9" as `0x${string}`;
+const ROUTER = "0x5FF56925140D6f5912C8Ca6593f2C3BC28190607" as `0x${string}`;
+const EURC = "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a" as `0x${string}`;
+const USDC = "0x3600000000000000000000000000000000000000" as `0x${string}`;
 const NOW = Math.floor(Date.now() / 1000);
 
 const cfg = {
   chainId: 5042002,
   router: ROUTER,
   vaultDepositToken: USDC,
-} as ChainConfig;
+} as unknown as ChainConfig;
 const tokIn = { symbol: "EURC", address: EURC, decimals: 6, scope: "e2e" } as TokenConfig;
 const tokOut = { symbol: "USDC", address: USDC, decimals: 6, scope: "e2e" } as TokenConfig;
 
@@ -59,7 +59,7 @@ function swap(over: Partial<ApiSwapData> = {}): ApiSwapData {
     recipient: SIGNER,
     tx: {
       to: ROUTER,
-      data: "0xdead",
+      data: "0xa9059cbb0000000000000000000000009264365408d363e7f142828f063077d7ab7c41d9",
       value: "0",
       entrypoint: "executePlan",
       amount_out_min: "5462550",
@@ -68,9 +68,16 @@ function swap(over: Partial<ApiSwapData> = {}): ApiSwapData {
   };
 }
 
+const routeFixture = {
+  amount_in: "5000000",
+  amount_out: "5490000",
+  deviation_ratio: "-0.00036348",
+};
+
 const base = (s: ApiSwapData) => ({
   swap: s,
   paths: s.paths,
+  route: routeFixture,
   cfg,
   rpcChainId: 5042002,
   signer: SIGNER,
@@ -113,6 +120,27 @@ describe("evaluateSwapSafety", () => {
     });
     expect(names(evaluateSwapSafety(base(s)))).toContain("tokenIn");
   });
+  // audit C3: signed-payload checks
+  test("non-zero tx.value fails (native USDC spend)", () => {
+    const s = swap({ tx: { ...swap().tx, value: "1000000" } });
+    expect(names(evaluateSwapSafety(base(s)))).toContain("tx.value!=0");
+  });
+  test("empty calldata fails", () => {
+    const s = swap({ tx: { ...swap().tx, data: "0x" } });
+    expect(names(evaluateSwapSafety(base(s)))).toContain("tx.data");
+  });
+  test("route amount_in mismatch fails (cross-response)", () => {
+    const a = { ...base(swap()), route: { ...routeFixture, amount_in: "4999999" } };
+    expect(names(evaluateSwapSafety(a))).toContain("route.amount_in");
+  });
+  test("expect_amount_out drift > 5% vs route fails", () => {
+    const s = swap({ expect_amount_out: "6000000" });
+    expect(names(evaluateSwapSafety(base(s)))).toContain("expect≈route.amount_out");
+  });
+  test("malformed/huge deviation_ratio fails", () => {
+    const a = { ...base(swap()), route: { ...routeFixture, deviation_ratio: "1.7" } };
+    expect(names(evaluateSwapSafety(a))).toContain("deviation_ratio");
+  });
 });
 
 // ---- verifySwap on fabricated receipt ----
@@ -124,10 +152,10 @@ function transferLog(token: string, from: string, to: string, v: bigint) {
     address: token,
     topics: [T, pad(from), pad(to)] as [`0x${string}`, ...`0x${string}`[]],
     data: hex(v),
-  };
+  } as unknown as TransactionReceipt["logs"][number];
 }
 const receipt = (logs: TransactionReceipt["logs"], status = "success") =>
-  ({ status, logs }) as TransactionReceipt;
+  ({ status, logs, from: SIGNER, to: ROUTER }) as unknown as TransactionReceipt;
 
 describe("verifySwap", () => {
   const good = verifySwap({
@@ -136,6 +164,7 @@ describe("verifySwap", () => {
       transferLog(USDC, ROUTER, SIGNER, 5490000n),
     ]),
     signer: SIGNER,
+    expectedTo: ROUTER,
     tokenIn: EURC,
     tokenOut: USDC,
     amountIn: 5000000n,
@@ -152,6 +181,7 @@ describe("verifySwap", () => {
     const r = verifySwap({
       receipt: receipt([], "reverted"),
       signer: SIGNER,
+      expectedTo: ROUTER,
       tokenIn: EURC,
       tokenOut: USDC,
       amountIn: 5000000n,
@@ -169,6 +199,7 @@ describe("verifySwap", () => {
         transferLog(USDC, ROUTER, SIGNER, 18038666n),
       ]),
       signer: SIGNER,
+      expectedTo: ROUTER,
       tokenIn: EURC,
       tokenOut: USDC,
       amountIn: 5000000n,
@@ -179,10 +210,78 @@ describe("verifySwap", () => {
     });
     expect(r.ok).toBe(true);
   });
+  // audit H3: unmeasurable deltas are skipped, not tautologically ok
+  test("null balances → delta checks skipped (not ok-faked)", () => {
+    const r = verifySwap({
+      receipt: receipt([
+        transferLog(EURC, SIGNER, ROUTER, 5000000n),
+        transferLog(USDC, ROUTER, SIGNER, 5490000n),
+      ]),
+      signer: SIGNER,
+      expectedTo: ROUTER,
+      tokenIn: EURC,
+      tokenOut: USDC,
+      amountIn: 5000000n,
+      amountOutMin: 5462550n,
+      balanceBefore: null,
+      balanceAfter: null,
+    });
+    expect(r.ok).toBe(true); // events+receipt still prove the swap
+    const delta = r.checks.filter((c) => c.name.startsWith("delta"));
+    expect(delta.length).toBe(2);
+    expect(delta.every((c) => c.skipped === true)).toBe(true);
+  });
+  test("receipt.from != signer fails (M5 binding)", () => {
+    const r = verifySwap({
+      receipt: {
+        ...receipt([transferLog(USDC, ROUTER, SIGNER, 5490000n)]),
+        from: "0x00000000000000000000000000000000000000ff",
+      } as TransactionReceipt,
+      signer: SIGNER,
+      expectedTo: ROUTER,
+      tokenIn: EURC,
+      tokenOut: USDC,
+      amountIn: 5000000n,
+      amountOutMin: 1n,
+      balanceBefore: null,
+      balanceAfter: null,
+    });
+    expect(r.checks.find((c) => c.name === "receipt.from==signer")?.ok).toBe(false);
+    expect(r.ok).toBe(false);
+  });
+  // audit H1: ERC-721-shaped Transfer (4 topics, data "0x") must not crash
+  test("ERC-721-shaped log does not crash verifySwap", () => {
+    const nftLog = {
+      address: "0x00000000000000000000000000000000000000aa",
+      topics: [T, pad(SIGNER), pad(ROUTER), pad("0x0000000000000000000000000000000000000001")] as [
+        `0x${string}`,
+        ...`0x${string}`[],
+      ],
+      data: "0x",
+    } as unknown as TransactionReceipt["logs"][number];
+    const r = verifySwap({
+      receipt: receipt([
+        nftLog,
+        transferLog(EURC, SIGNER, ROUTER, 5000000n),
+        transferLog(USDC, ROUTER, SIGNER, 5490000n),
+      ]),
+      signer: SIGNER,
+      expectedTo: ROUTER,
+      tokenIn: EURC,
+      tokenOut: USDC,
+      amountIn: 5000000n,
+      amountOutMin: 5462550n,
+      balanceBefore: null,
+      balanceAfter: null,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.inReceived).toBe(5490000n);
+  });
   test("event-delta mismatch fails (fraud-proof)", () => {
     const r = verifySwap({
       receipt: receipt([transferLog(USDC, ROUTER, SIGNER, 5490000n)]),
       signer: SIGNER,
+      expectedTo: ROUTER,
       tokenIn: EURC,
       tokenOut: USDC,
       amountIn: 5000000n,

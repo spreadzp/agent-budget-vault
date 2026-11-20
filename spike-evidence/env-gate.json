@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-19T21:29:34.435Z",
+  "generatedAt": "2026-11-20T09:15:03.027Z",
   "slice": "254-1",
   "ok": true,
   "checks": [
@@ -13,7 +13,7 @@
       "name": "factory",
       "chain": "testnet",
       "ok": true,
-      "detail": "factory=0x0f36cdda646bad0e8e65c48b2ee7304dfca84d25 vaultCount=2 token=0x3600000000000000000000000000000000000000"
+      "detail": "factory=0x0f36cdda646bad0e8e65c48b2ee7304dfca84d25 vaultCount=3 token=0x3600000000000000000000000000000000000000"
     },
     {
       "name": "token USDC",

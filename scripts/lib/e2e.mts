@@ -2,24 +2,44 @@
 // FSM: QUOTED → SWAP_SUBMITTED → SWAP_VERIFIED → APPROVE_* → DEPOSIT_* → DEPOSITED.
 // Any failed check aborts before the next signature.
 // --drill (SLICE-254-5): break after swap submit to prove resume adoption.
+//
+// Audit hardening (254-7):
+//  - buildCtx re-validates the vault policy + token decimals ON-CHAIN before
+//    any approve/deposit (H5, M7);
+//  - intents journal amountOutMin and pre-tx balances so resume verification
+//    is not a tautology (H3);
+//  - finishDepositPhase is stage-aware — never double-advances the FSM (H4);
+//  - ABORTED runs with recorded swap/deposit txHash refuse a fresh e2e (H1/H2);
+//  - quote freshness re-checked right before signing (M1); EURC allowance is
+//    revoked on simulation-abort (M2); --drill requires PEACH_DRILL=1 (M9).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createWalletClient,
+  encodeFunctionData,
   http,
   type PublicClient,
-  type WalletClient,
+  type TransactionReceipt,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import type { ApiSwapData } from "@masterpeach/arc-aggregator-sdk";
-import { chainOf, ERC20_ABI, publicClientFor, VAULT_ABI } from "./chain.mts";
+import type { SigningWallet } from "./tx.mts";
+import {
+  chainOf,
+  ERC20_ABI,
+  publicClientFor,
+  readTokenMeta,
+  VAULT_ABI,
+  VAULT_POLICY_ABI,
+  type VaultPolicy,
+} from "./chain.mts";
 import { EVIDENCE_DIR, type ChainConfig, type TokenConfig } from "./config.mts";
-import { requiredEnv } from "./env.mts";
+import { accountFromEnv } from "./env.mts";
 import { apiClientFor } from "./peach/client.mts";
 import { evaluateSwapSafety, simulateSwap, type SafetyCheck } from "./peach/safety.mts";
-import { readBalances, verifySwap } from "./peach/verification.mts";
+import { readBalances, verifySwap, type VerifyCheck } from "./peach/verification.mts";
 import { advance, loadState, requireStage, saveState, type SpikeState } from "./state.mts";
 import { submitGuarded } from "./tx.mts";
+import { buildProvisionParams, evaluateVaultPolicy } from "./vault/provisioning.mts";
 import { verifyDeposit } from "./vault/deposit.mts";
 
 const E2E_DIR = join(EVIDENCE_DIR, "e2e");
@@ -27,6 +47,7 @@ const TRANSCRIPT_PATH = join(E2E_DIR, "transcript.json");
 export const E2E_AMOUNT_IN = 5_000_000n; // 5 EURC, 6 dec (D-254-17)
 const SLIPPAGE_BPS = 50;
 const DEADLINE_SECS = 120;
+const QUOTE_MAX_AGE_SECS = 110;
 
 export interface Transcript {
   at: string;
@@ -37,7 +58,7 @@ export interface Transcript {
   swapTx?: `0x${string}`;
   approveTxs: { step: string; txHash: `0x${string}` }[];
   depositTx?: `0x${string}`;
-  verifyChecks: Record<string, { name: string; ok: boolean; detail: string }[]>;
+  verifyChecks: Record<string, VerifyCheck[]>;
   result?: string;
   notes?: string[];
 }
@@ -68,20 +89,21 @@ export interface E2eCtx {
   cfg: ChainConfig;
   client: PublicClient;
   api: ReturnType<typeof apiClientFor>;
-  wallet: WalletClient;
+  wallet: SigningWallet;
   signer: `0x${string}`;
   vault: `0x${string}`;
   eurc: TokenConfig;
   usdc: TokenConfig;
 }
 
-export function buildCtx(cfg: ChainConfig): E2eCtx {
+/**
+ * Build the run context. The vault address comes from the local journal, but
+ * is trusted only after a FULL on-chain policy re-check (audit H5) and a
+ * decimals cross-check (audit M7) — before any USDC approve is ever signed.
+ */
+export async function buildCtx(cfg: ChainConfig): Promise<E2eCtx> {
   const client = publicClientFor(cfg);
-  const account = privateKeyToAccount(
-    (requiredEnv("PRIVATE_KEY").startsWith("0x")
-      ? requiredEnv("PRIVATE_KEY")
-      : `0x${requiredEnv("PRIVATE_KEY")}`) as `0x${string}`,
-  );
+  const account = accountFromEnv();
   const state = loadState();
   if (!state.vault) throw new Error("no vault in state — run provision first");
   const eurc = cfg.tokens.find((t) => t.symbol === "EURC" && t.scope === "e2e");
@@ -89,6 +111,32 @@ export function buildCtx(cfg: ChainConfig): E2eCtx {
     (t) => t.address.toLowerCase() === cfg.vaultDepositToken.toLowerCase(),
   );
   if (!eurc || !usdc) throw new Error("config missing EURC(e2e)/vault USDC token");
+
+  // H5: re-verify the vault is the contract provision() configured — full tuple
+  const policy = (await client.readContract({
+    address: state.vault,
+    abi: VAULT_POLICY_ABI,
+    functionName: "policy",
+  })) as VaultPolicy;
+  const expected = buildProvisionParams(account.address);
+  const chk = evaluateVaultPolicy(policy, {
+    ...expected,
+    token: cfg.vaultDepositToken,
+  });
+  if (!chk.ok) throw new Error(`vault policy re-check failed: ${chk.failures.join("; ")}`);
+
+  // M7: token decimals must match on-chain metadata (money-path invariant C)
+  const [mIn, mOut] = await Promise.all([
+    readTokenMeta(client, eurc.address),
+    readTokenMeta(client, usdc.address),
+  ]);
+  if (mIn.decimals !== eurc.decimals) {
+    throw new Error(`EURC decimals: chain ${mIn.decimals} != config ${eurc.decimals}`);
+  }
+  if (mOut.decimals !== usdc.decimals) {
+    throw new Error(`USDC decimals: chain ${mOut.decimals} != config ${usdc.decimals}`);
+  }
+
   return {
     cfg,
     client,
@@ -101,19 +149,27 @@ export function buildCtx(cfg: ChainConfig): E2eCtx {
   };
 }
 
+export function requiredReceived(state: SpikeState): bigint {
+  if (!state.usdcReceived || BigInt(state.usdcReceived) <= 0n) {
+    throw new Error("usdcReceived missing/zero — cannot size approve+deposit safely");
+  }
+  return BigInt(state.usdcReceived);
+}
+
 /** Verify a mined swap receipt and advance to SWAP_VERIFIED. */
 export function verifyAndRecord(
   ctx: E2eCtx,
   state: SpikeState,
   t: Transcript,
-  receipt: import("viem").TransactionReceipt,
-  swapBalBefore: { in: bigint; out: bigint },
+  receipt: TransactionReceipt,
+  swapBalBefore: { in: bigint; out: bigint } | null,
   amountOutMin: bigint,
-  balanceAfter: { in: bigint; out: bigint },
+  balanceAfter: { in: bigint; out: bigint } | null,
 ): { state: SpikeState; received: bigint } {
   const v = verifySwap({
     receipt,
     signer: ctx.signer,
+    expectedTo: ctx.cfg.router,
     tokenIn: ctx.eurc.address,
     tokenOut: ctx.usdc.address,
     amountIn: E2E_AMOUNT_IN,
@@ -130,48 +186,61 @@ export function verifyAndRecord(
   return { state: s, received: v.inReceived };
 }
 
-/** Approve USDC→vault (exact, skip if sufficient) + deposit + verify. */
+/**
+ * Approve USDC→vault (exact, skip if sufficient) + deposit + verify.
+ * Stage-aware (audit H4): works from SWAP_VERIFIED, APPROVE_SUBMITTED,
+ * APPROVED and DEPOSIT_SUBMITTED — transitions are taken only when legal,
+ * never re-advancing a stage the FSM already passed.
+ */
 export async function finishDepositPhase(
   ctx: E2eCtx,
   state: SpikeState,
   t: Transcript,
   received: bigint,
 ): Promise<SpikeState> {
-  const { client, wallet, cfg, signer, usdc, vault } = ctx;
-  const chain = chainOf(cfg);
+  const { client, wallet, signer, usdc, vault } = ctx;
+  if (received <= 0n) throw new Error("received <= 0 — refusing approve/deposit");
 
-  const usdcAllowance = await client.readContract({
-    address: usdc.address,
-    abi: ERC20_ABI,
-    functionName: "allowance",
-    args: [signer, vault],
-  });
-  if (usdcAllowance < received) {
-    const r = await submitGuarded({
-      client,
-      state,
-      step: "approve",
-      sender: signer,
-      params: { token: usdc.address, spender: vault, amount: received.toString() },
-      send: () =>
-        wallet.writeContract({
-          address: usdc.address,
-          abi: ERC20_ABI,
-          functionName: "approve",
-          args: [vault, received],
-          chain,
-        }),
-      onSubmitted: (s) => advance(s, "APPROVE_SUBMITTED", "pending"),
+  // --- approve leg: only when the FSM hasn't passed APPROVED yet ---
+  if (state.stage === "SWAP_VERIFIED" || state.stage === "APPROVE_SUBMITTED") {
+    const usdcAllowance = await client.readContract({
+      address: usdc.address,
+      abi: ERC20_ABI,
+      functionName: "allowance",
+      args: [signer, vault],
     });
-    state = advance(r.state, "APPROVED", `allowance ${received}`);
-    saveState(state);
-    t.approveTxs.push({ step: "approve_usdc", txHash: r.txHash });
-  } else {
-    state = advance(state, "APPROVE_SUBMITTED", "skip: allowance sufficient");
-    state = advance(state, "APPROVED", "skip: allowance sufficient");
+    if (usdcAllowance < received) {
+      const r = await submitGuarded({
+        client,
+        wallet,
+        state,
+        step: "approve",
+        sender: signer,
+        params: { token: usdc.address, spender: vault, amount: received.toString() },
+        request: {
+          to: usdc.address,
+          data: encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [vault, received],
+          }),
+        },
+        expectedTo: usdc.address,
+        onSubmitted: (s) =>
+          s.stage === "APPROVE_SUBMITTED" ? s : advance(s, "APPROVE_SUBMITTED", "pending"),
+      });
+      state = r.state;
+      t.approveTxs.push({ step: "approve_usdc", txHash: r.txHash });
+    }
+    if (state.stage !== "APPROVE_SUBMITTED") {
+      state = advance(state, "APPROVE_SUBMITTED", "skip: allowance sufficient");
+      saveState(state);
+    }
+    state = advance(state, "APPROVED", `allowance ${received}`);
     saveState(state);
   }
 
+  // --- deposit leg ---
   const vaultBalBefore = await client.readContract({
     address: usdc.address,
     abi: ERC20_ABI,
@@ -180,19 +249,23 @@ export async function finishDepositPhase(
   });
   const d = await submitGuarded({
     client,
+    wallet,
     state,
     step: "deposit",
     sender: signer,
-    params: { vault, amount: received.toString(), mode: "EXTEND" },
-    send: () =>
-      wallet.writeContract({
-        address: vault,
-        abi: VAULT_ABI,
-        functionName: "deposit",
-        args: [received, 0],
-        chain,
-      }),
-    onSubmitted: (s) => advance(s, "DEPOSIT_SUBMITTED", "pending"),
+    params: {
+      vault,
+      amount: received.toString(),
+      mode: "EXTEND",
+      vaultBalBefore: vaultBalBefore.toString(),
+    },
+    request: {
+      to: vault,
+      data: encodeFunctionData({ abi: VAULT_ABI, functionName: "deposit", args: [received, 0] }),
+    },
+    expectedTo: vault,
+    onSubmitted: (s) =>
+      s.stage === "DEPOSIT_SUBMITTED" ? s : advance(s, "DEPOSIT_SUBMITTED", "pending"),
   });
   state = d.state;
   t.depositTx = d.txHash;
@@ -214,7 +287,17 @@ export async function finishDepositPhase(
   return state;
 }
 
+/** Freshness gate (M1): quote_ts must still be inside the deadline window. */
+export function quoteStillFresh(swap: ApiSwapData, nowSecs: number): boolean {
+  const quoteTsSecs = swap.quote_ts > 1e12 ? Math.floor(swap.quote_ts / 1000) : swap.quote_ts;
+  const age = nowSecs - quoteTsSecs;
+  return age <= QUOTE_MAX_AGE_SECS && age >= -30;
+}
+
 export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): Promise<Transcript> {
+  if (opts.drill && process.env.PEACH_DRILL !== "1") {
+    throw new Error("--drill requires PEACH_DRILL=1 in env (deliberate crash-test opt-in)");
+  }
   let state = loadState();
   if (state.stage === "DEPOSITED" && opts.drill) {
     // drill-only reset: reuse the same provisioned vault for a second deposit
@@ -222,6 +305,16 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
     saveState(state);
   }
   if (state.stage === "ABORTED") {
+    // audit H1/H2: a run that already broadcast a swap/deposit must NOT be
+    // silently retried as fresh — the money actions need resume/reconcile.
+    const doneMoney = state.intents.some(
+      (i) => (i.step === "swap" || i.step === "deposit") && i.txHash !== undefined,
+    );
+    if (doneMoney) {
+      throw new Error(
+        "ABORTED run has recorded swap/deposit txHash in the journal — refusing fresh e2e; run 'resume' (or inspect) first",
+      );
+    }
     state = advance(state, "PROVISIONED", "retry after abort");
     saveState(state);
   }
@@ -230,7 +323,7 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
     throw new Error(`stage ${state.stage} already past quote — use 'resume' to reconcile`);
   }
 
-  const ctx = buildCtx(cfg);
+  const ctx = await buildCtx(cfg);
   const { client, api, signer, eurc, usdc, vault } = ctx;
 
   const t: Transcript = {
@@ -278,9 +371,10 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
 
   // ---- pre-sign checklist (simulation runs post-approve: needs allowance) ----
   const rpcChainId = await client.getChainId();
-  t.safetyChecks = evaluateSwapSafety({
+  const safetyArgs = {
     swap,
     paths: route.paths,
+    route,
     cfg,
     rpcChainId,
     signer,
@@ -288,9 +382,9 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
     tokenOut: usdc,
     amountIn: E2E_AMOUNT_IN,
     slippageBps: SLIPPAGE_BPS,
-    nowSecs: Math.floor(Date.now() / 1000),
-    simulatedOk: null,
-  });
+    simulatedOk: null as boolean | null,
+  };
+  t.safetyChecks = evaluateSwapSafety({ ...safetyArgs, nowSecs: Math.floor(Date.now() / 1000) });
   for (const c of t.safetyChecks) {
     if (!c.ok) abortRun(t, state, `pre-sign check failed: ${c.name} — ${c.detail}`);
   }
@@ -304,21 +398,24 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
     functionName: "allowance",
     args: [signer, spender],
   });
-  if (allowance < E2E_AMOUNT_IN) {
+  const grantedEurc = allowance < E2E_AMOUNT_IN;
+  if (grantedEurc) {
     const r = await submitGuarded({
       client,
+      wallet: ctx.wallet,
       state,
       step: "eurc_approve",
       sender: signer,
       params: { token: eurc.address, spender, amount: E2E_AMOUNT_IN.toString() },
-      send: () =>
-        ctx.wallet.writeContract({
-          address: eurc.address,
+      request: {
+        to: eurc.address,
+        data: encodeFunctionData({
           abi: ERC20_ABI,
           functionName: "approve",
           args: [spender, E2E_AMOUNT_IN],
-          chain: chainOf(cfg),
         }),
+      },
+      expectedTo: eurc.address,
     });
     state = r.state;
     t.approveTxs.push({ step: "eurc_approve", txHash: r.txHash });
@@ -326,10 +423,45 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
 
   // ---- post-approve simulation gate ----
   const sim = await simulateSwap(client, swap, signer);
-  if (!sim.ok) abortRun(t, state, `swap simulation failed: ${sim.error}`);
+  if (!sim.ok) {
+    if (grantedEurc) {
+      // M2: don't leave a standing EURC allowance to the router on abort
+      try {
+        await submitGuarded({
+          client,
+          wallet: ctx.wallet,
+          state,
+          step: "eurc_approve",
+          sender: signer,
+          params: { token: eurc.address, spender, amount: "0", revoke: true },
+          request: {
+            to: eurc.address,
+            data: encodeFunctionData({
+              abi: ERC20_ABI,
+              functionName: "approve",
+              args: [spender, 0n],
+            }),
+          },
+          expectedTo: eurc.address,
+        });
+        t.notes = [...(t.notes ?? []), "EURC allowance revoked after simulation abort"];
+      } catch (e) {
+        t.notes = [
+          ...(t.notes ?? []),
+          `revoke attempt failed: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`,
+        ];
+      }
+    }
+    abortRun(t, state, `swap simulation failed: ${sim.error}`);
+  }
   t.verifyChecks["simulation"] = [
     { name: "publicClient.call", ok: true, detail: "simulated ok (post-approve)" },
   ];
+
+  // ---- M1: freshness re-check right before signing the swap ----
+  if (!quoteStillFresh(swap, Math.floor(Date.now() / 1000))) {
+    abortRun(t, state, "quote went stale between pre-sign checks and swap signing — re-quote");
+  }
 
   // ---- swap ----
   const swapBalBefore = await readBalances(client, {
@@ -337,19 +469,28 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
     tokenIn: eurc.address,
     tokenOut: usdc.address,
   });
+  const amountOutMin = BigInt(swap.tx.amount_out_min);
   const s = await submitGuarded({
     client,
+    wallet: ctx.wallet,
     state,
     step: "swap",
     sender: signer,
-    params: { to: swap.tx.to, quoteId: swap.quote_id, amountIn: E2E_AMOUNT_IN.toString() },
-    send: () =>
-      ctx.wallet.sendTransaction({
-        to: swap.tx.to,
-        data: swap.tx.data,
-        value: BigInt(swap.tx.value),
-        chain: chainOf(cfg),
-      }),
+    params: {
+      to: swap.tx.to,
+      quoteId: swap.quote_id,
+      amountIn: E2E_AMOUNT_IN.toString(),
+      amountOutMin: amountOutMin.toString(),
+      expectOut: swap.expect_amount_out,
+      balInBefore: swapBalBefore.in.toString(),
+      balOutBefore: swapBalBefore.out.toString(),
+    },
+    request: {
+      to: swap.tx.to,
+      data: swap.tx.data,
+      value: 0n, // checked == "0" by the safety gate
+    },
+    expectedTo: cfg.router,
     onSubmitted: (st) => {
       const next = advance(st, "SWAP_SUBMITTED", "pending");
       saveState(next); // crash-window demo: hash+stage persisted before receipt wait
@@ -370,7 +511,7 @@ export async function runE2E(cfg: ChainConfig, opts: { drill?: boolean } = {}): 
     t,
     s.receipt,
     swapBalBefore,
-    BigInt(swap.tx.amount_out_min),
+    amountOutMin,
     await readBalances(client, { owner: signer, tokenIn: eurc.address, tokenOut: usdc.address }),
   );
   state = v.state;

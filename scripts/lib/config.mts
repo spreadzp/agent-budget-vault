@@ -26,7 +26,6 @@ export interface SpikeConfig {
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const CONFIG_PATH = resolve(REPO_ROOT, "config/peach-spike.json");
-export const STATE_PATH = resolve(REPO_ROOT, "state/peach-e2e.json");
 export const EVIDENCE_DIR = resolve(REPO_ROOT, "spike-evidence");
 
 const ADDR = /^0x[0-9a-fA-F]{40}$/;
