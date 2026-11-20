@@ -34,6 +34,13 @@ export function buildProvisionParams(signer: `0x${string}`): ProvisionParams {
   return { owner: signer, agent: signer, agentId: 254n, registry: ZERO, operator: ZERO };
 }
 
+/** audit re-check nit: payees + perTxCap were readable but never pinned —
+ * a vault created with a payee list or a non-zero cap would silently pass
+ * the policy re-check. We provision with neither, so both must be empty/0.
+ */
+const EXPECTED_PAYEE_COUNT = 0;
+const EXPECTED_PER_TX_CAP = 0n;
+
 /**
  * Full expected-tuple check (audit H5): every field createVault was called
  * with must match, plus the vault must not be cancelled or paused.
@@ -61,6 +68,10 @@ export function evaluateVaultPolicy(
     failures.push(`registry ${p.registry} != expected ${expected.registry}`);
   if (expected.operator !== undefined && !eq(p.operator, expected.operator))
     failures.push(`operator ${p.operator} != expected ${expected.operator}`);
+  if ((p.payees?.length ?? 0) !== EXPECTED_PAYEE_COUNT)
+    failures.push(`payees ${p.payees?.length} != expected ${EXPECTED_PAYEE_COUNT}`);
+  if (p.perTxCap !== EXPECTED_PER_TX_CAP)
+    failures.push(`perTxCap ${p.perTxCap} != expected ${EXPECTED_PER_TX_CAP}`);
   if (p.cancelled) failures.push("vault is cancelled");
   if (p.paused) failures.push("vault is paused");
   return { ok: failures.length === 0, failures };

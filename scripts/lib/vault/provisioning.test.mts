@@ -65,6 +65,21 @@ describe("evaluateVaultPolicy", () => {
     expect(r.failures.join(" ")).toMatch(/token/);
   });
 
+  test("non-empty payees fails", () => {
+    const r = evaluateVaultPolicy(
+      policy({ payees: ["0x00000000000000000000000000000000000000aa" as `0x${string}`] }),
+      { owner: SIGNER, token: USDC },
+    );
+    expect(r.ok).toBe(false);
+    expect(r.failures.join(" ")).toMatch(/payees/);
+  });
+
+  test("non-zero perTxCap fails", () => {
+    const r = evaluateVaultPolicy(policy({ perTxCap: 1000n }), { owner: SIGNER, token: USDC });
+    expect(r.ok).toBe(false);
+    expect(r.failures.join(" ")).toMatch(/perTxCap/);
+  });
+
   test("cancelled vault fails", () => {
     const r = evaluateVaultPolicy(policy({ cancelled: true }), {
       owner: SIGNER,

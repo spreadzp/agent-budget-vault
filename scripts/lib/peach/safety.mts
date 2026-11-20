@@ -7,7 +7,7 @@
 import type { ApiRoutePath, ApiSwapData } from "@masterpeach/arc-aggregator-sdk";
 import type { PublicClient } from "viem";
 import type { ChainConfig, TokenConfig } from "../config.mts";
-import { minAmountOut } from "./quotes.mts";
+import { minAmountOut, strictUnits } from "./quotes.mts";
 
 export interface SafetyCheck {
   name: string;
@@ -32,6 +32,69 @@ const DEVIATION_BOUND = 0.5;
 /** Max allowed relative drift between swap.expect_amount_out and route.amount_out. */
 const EXPECT_DRIFT_PPM = 50_000n; // 5%
 
+/**
+ * audit H-C3 (Randy re-check): the signed calldata is pinned, not merely
+ * non-empty. Selector 0x02fcde22 carries a fixed 76-word layout (decoded
+ * from the live journaled swap 0x7587…6b60 and confirmed against
+ * 0x4e26…9006). Pinned words — fail closed on any other selector/length:
+ *   w2 chainId | w3 router | w4-6 signer×3 | w7 tokenIn | w8 tokenOut |
+ *   w11 amountIn | w12 amountOutMin | w13 expectOut | w19 deadline |
+ *   w26-29 repeat tokenIn/tokenOut/amountIn/amountOutMin (path section).
+ */
+const SWAP_SELECTOR = "0x02fcde22";
+const SWAP_WORDS = 76;
+const wordAt = (data: string, i: number): string => `0x${data.slice(10 + i * 64, 10 + (i + 1) * 64)}`;
+const wordAddr = (data: string, i: number): string => `0x${data.slice(10 + i * 64 + 24, 10 + (i + 1) * 64)}`;
+
+interface PinnedCalldata {
+  chainId: bigint;
+  router: string;
+  signer1: string;
+  signer2: string;
+  signer3: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: bigint;
+  amountOutMin: bigint;
+  expectOut: bigint;
+  deadline: bigint;
+  pathTokenIn: string;
+  pathTokenOut: string;
+  pathAmountIn: bigint;
+  pathAmountOutMin: bigint;
+}
+
+function decodePinnedSwapCalldata(data: unknown): PinnedCalldata | { error: string } {
+  if (typeof data !== "string" || !/^0x[0-9a-fA-F]+$/.test(data)) {
+    return { error: "calldata not hex" };
+  }
+  const d = data.toLowerCase();
+  if (d.slice(0, 10) !== SWAP_SELECTOR) {
+    return { error: `unknown selector ${d.slice(0, 10)} — layout not pinned, refusing` };
+  }
+  const words = (d.length - 10) / 64;
+  if (!Number.isInteger(words) || words !== SWAP_WORDS) {
+    return { error: `calldata ${words} words != pinned ${SWAP_WORDS}` };
+  }
+  return {
+    chainId: BigInt(wordAt(d, 2)),
+    router: wordAddr(d, 3),
+    signer1: wordAddr(d, 4),
+    signer2: wordAddr(d, 5),
+    signer3: wordAddr(d, 6),
+    tokenIn: wordAddr(d, 7),
+    tokenOut: wordAddr(d, 8),
+    amountIn: BigInt(wordAt(d, 11)),
+    amountOutMin: BigInt(wordAt(d, 12)),
+    expectOut: BigInt(wordAt(d, 13)),
+    deadline: BigInt(wordAt(d, 19)),
+    pathTokenIn: wordAddr(d, 26),
+    pathTokenOut: wordAddr(d, 27),
+    pathAmountIn: BigInt(wordAt(d, 28)),
+    pathAmountOutMin: BigInt(wordAt(d, 29)),
+  };
+}
+
 export function evaluateSwapSafety(args: {
   swap: ApiSwapData;
   /** Route-preview paths from findRoutes — tokenIn/Out checks (V1 swap omits paths). */
@@ -53,7 +116,21 @@ export function evaluateSwapSafety(args: {
   const router = swap.contracts.execution_router;
   const firstPath = args.paths[0];
   const lastPath = args.paths[args.paths.length - 1];
-  const expectedMin = minAmountOut(BigInt(swap.expect_amount_out), args.slippageBps);
+  // audit re-check nit: API unit strings parse strictly — BigInt("") is 0n,
+  // BigInt("0x10") is 16 — either would smuggle a bad quote through.
+  const apiUnits = (raw: unknown, label: string): bigint | null => {
+    try {
+      return strictUnits(String(raw), label);
+    } catch {
+      checks.push(no("api units", `${label} malformed: ${JSON.stringify(raw)}`));
+      return null;
+    }
+  };
+  const expectOut = apiUnits(swap.expect_amount_out, "expect_amount_out");
+  const amountInApi = apiUnits(swap.amount_in, "amount_in");
+  const routeOut = apiUnits(route.amount_out, "route.amount_out");
+  const minOutApi = apiUnits(swap.tx.amount_out_min, "amount_out_min");
+  const expectedMin = expectOut === null ? 0n : minAmountOut(expectOut, args.slippageBps);
 
   checks.push(
     args.rpcChainId === cfg.chainId
@@ -82,6 +159,37 @@ export function evaluateSwapSafety(args: {
       ? yes("tx.data non-empty", `${swap.tx.data.slice(0, 10)}…`)
       : no("tx.data", "empty/short calldata"),
   );
+  // audit H-C3: pin the signed calldata words — a compromised API could
+  // otherwise forge envelope-consistent tx.data naming another recipient
+  // or a different amountOutMin.
+  const cd = decodePinnedSwapCalldata(swap.tx.data);
+  if ("error" in cd) {
+    checks.push(no("calldata pin", cd.error));
+  } else {
+    const pinOk =
+      cd.chainId === BigInt(cfg.chainId) &&
+      eq(cd.router, swap.tx.to) &&
+      eq(cd.signer1, signer) && eq(cd.signer2, signer) && eq(cd.signer3, signer) &&
+      eq(cd.tokenIn, args.tokenIn.address) &&
+      eq(cd.tokenOut, args.tokenOut.address) &&
+      cd.amountIn === args.amountIn &&
+      cd.amountOutMin.toString() === swap.tx.amount_out_min &&
+      cd.expectOut.toString() === swap.expect_amount_out &&
+      eq(cd.pathTokenIn, args.tokenIn.address) &&
+      eq(cd.pathTokenOut, args.tokenOut.address) &&
+      cd.pathAmountIn === args.amountIn &&
+      cd.pathAmountOutMin.toString() === swap.tx.amount_out_min &&
+      cd.deadline > BigInt(args.nowSecs) &&
+      cd.deadline <= BigInt(args.nowSecs + 130);
+    checks.push(
+      pinOk
+        ? yes("calldata pinned", `selector ${SWAP_SELECTOR}, all words bound`)
+        : no(
+            "calldata pin",
+            `chain ${cd.chainId} router ${cd.router} signer ${cd.signer1}/${cd.signer2}/${cd.signer3} in ${cd.tokenIn} out ${cd.tokenOut} amountIn ${cd.amountIn} minOut ${cd.amountOutMin} expect ${cd.expectOut} deadline ${cd.deadline} pathIn ${cd.pathAmountIn} pathMin ${cd.pathAmountOutMin}`,
+          ),
+    );
+  }
   checks.push(
     eq(swap.payer, signer) && eq(swap.executor, signer)
       ? yes("payer/executor==signer", signer)
@@ -102,11 +210,13 @@ export function evaluateSwapSafety(args: {
       ? yes("tokenOut==vault USDC", args.tokenOut.symbol)
       : no("tokenOut", `${lastPath?.token_out} != ${args.tokenOut.address}`),
   );
-  checks.push(
-    BigInt(swap.amount_in) === args.amountIn
-      ? yes("amountIn", args.amountIn.toString())
-      : no("amountIn", `${swap.amount_in} != ${args.amountIn}`),
-  );
+  if (amountInApi !== null) {
+    checks.push(
+      amountInApi === args.amountIn
+        ? yes("amountIn", args.amountIn.toString())
+        : no("amountIn", `${swap.amount_in} != ${args.amountIn}`),
+    );
+  }
   // cross-response consistency: the executable swap claims must match the
   // independently fetched route quote (different API call, same session).
   checks.push(
@@ -114,12 +224,14 @@ export function evaluateSwapSafety(args: {
       ? yes("route.amount_in==swap.amount_in", route.amount_in)
       : no("route.amount_in", `${route.amount_in} != ${swap.amount_in}`),
   );
-  const drift = ppm(BigInt(swap.expect_amount_out), BigInt(route.amount_out));
-  checks.push(
-    drift <= EXPECT_DRIFT_PPM
-      ? yes("expect≈route.amount_out", `${swap.expect_amount_out} vs ${route.amount_out} (drift ${drift}ppm)`)
-      : no("expect≈route.amount_out", `drift ${drift}ppm > ${EXPECT_DRIFT_PPM}ppm`),
-  );
+  if (expectOut !== null && routeOut !== null) {
+    const drift = ppm(expectOut, routeOut);
+    checks.push(
+      drift <= EXPECT_DRIFT_PPM
+        ? yes("expect≈route.amount_out", `${swap.expect_amount_out} vs ${route.amount_out} (drift ${drift}ppm)`)
+        : no("expect≈route.amount_out", `drift ${drift}ppm > ${EXPECT_DRIFT_PPM}ppm`),
+    );
+  }
   // audit N-M5 + N2-L4: a non-numeric deviation_ratio fails (Number("") is 0,
   // so a strict regex is required). The testnet API never reports this field
   // for EURC→USDC (verified across every live run) — absence is annotated,
@@ -150,11 +262,13 @@ export function evaluateSwapSafety(args: {
       );
     }
   }
-  checks.push(
-    BigInt(swap.tx.amount_out_min) >= expectedMin && BigInt(swap.tx.amount_out_min) > 0n
-      ? yes("amountOutMin>=expect*(1-slip)", `${swap.tx.amount_out_min} >= ${expectedMin}`)
-      : no("amountOutMin", `${swap.tx.amount_out_min} < ${expectedMin}`),
-  );
+  if (minOutApi !== null && expectOut !== null) {
+    checks.push(
+      minOutApi >= expectedMin && minOutApi > 0n
+        ? yes("amountOutMin>=expect*(1-slip)", `${swap.tx.amount_out_min} >= ${expectedMin}`)
+        : no("amountOutMin", `${swap.tx.amount_out_min} < ${expectedMin}`),
+    );
+  }
   // API returns quote_ts in epoch ms — normalize; accept ±30s clock skew,
   // reject age > 110s (deadline_secs is 120).
   const quoteTsSecs = swap.quote_ts > 1e12 ? Math.floor(swap.quote_ts / 1000) : swap.quote_ts;

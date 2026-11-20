@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-20T09:59:45.359Z",
+  "at": "2026-11-20T12:00:44.628Z",
   "vault": "0x1eD696AfE80770E5662A17f8365e9e0b1AbA26AE",
   "signer": "0x9264365408D363E7f142828f063077d7ab7C41d9",
   "amountIn": "5000000",
@@ -7,7 +7,7 @@
   "approveTxs": [
     {
       "step": "approve_usdc",
-      "txHash": "0xd6a2777e75ecb8e1a77d77de0f833a0ed6c0f6861edfbd08369c51fb19c70d0a"
+      "txHash": "0x536d908f458d159cf2b04085a29dcbef67f357af2ee1ff7ccdaa0df852c74851"
     }
   ],
   "verifyChecks": {
@@ -35,7 +35,7 @@
       {
         "name": "Transfer(tokenOut) signer in >= amountOutMin",
         "ok": true,
-        "detail": "9709033 >= 9660487"
+        "detail": "9315855 >= 9269275"
       },
       {
         "name": "delta tokenIn == events",
@@ -45,7 +45,7 @@
       {
         "name": "delta tokenOut == events - gas",
         "ok": true,
-        "detail": "delta 9692052 vs events 9709033 - gas 16981 (±4)"
+        "detail": "delta 9304515 vs events 9315855 - gas 11340 (±4)"
       }
     ],
     "deposit": [
@@ -67,12 +67,12 @@
       {
         "name": "Deposited event",
         "ok": true,
-        "detail": "amount=9709033"
+        "detail": "amount=9315855"
       },
       {
         "name": "vault token balance += amount",
         "ok": true,
-        "detail": "51286728 -> 60995761"
+        "detail": "60995761 -> 70311616"
       },
       {
         "name": "stream active (rate>0,startTime>0)",
@@ -82,7 +82,7 @@
       {
         "name": "endTime > startTime",
         "ok": true,
-        "detail": "end=1807324632 start=1795125482"
+        "detail": "end=1809187803 start=1795125482"
       },
       {
         "name": "not cancelled",
@@ -99,7 +99,7 @@
   "notes": [
     "resume run — txHashes adopted from persisted intents"
   ],
-  "swapTx": "0x4e2669ae26291a4d6bfc37f8f3e7fdaec5440eec7f858180f1398ec5f2339006",
-  "depositTx": "0xa91b386fc8a2d2736302a90c63bae47fe93089314b4a715f9c2292538dbc7b51",
+  "swapTx": "0x6d6a830f54ced52e2ba3e8c4dfb4b8856b25b31f190fea917e78e38904df1355",
+  "depositTx": "0x04c485a96f88515e67ff5064542645678592d75a98dbbb20069e1702b285beb3",
   "result": "DEPOSITED"
 }

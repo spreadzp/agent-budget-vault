@@ -70,7 +70,12 @@ const SUBMITTED = new Set<Stage>(["SWAP_SUBMITTED", "APPROVE_SUBMITTED", "DEPOSI
 
 export function canTransition(from: Stage, to: Stage): boolean {
   if (to === "ABORTED") return from !== "ABORTED" && from !== "DEPOSITED";
-  if (from === "ABORTED") return to === "PROVISIONED"; // guarded by caller: no prior swap/deposit txHash
+  // ABORTED → PROVISIONED: fresh retry, caller guards no live money intents.
+  // ABORTED → *_SUBMITTED: reclaim — caller (resume) only does this after
+  // finding a journaled mined txHash to adopt (audit N3, Randy re-check).
+  if (from === "ABORTED") {
+    return to === "PROVISIONED" || to === "SWAP_SUBMITTED" || to === "DEPOSIT_SUBMITTED";
+  }
   if (from === "DEPOSITED") return false;
   if (LINEAR_NEXT[from] === to) return true;
   if (SUBMITTED.has(from)) {
@@ -235,10 +240,44 @@ export function acquireLock(path = LOCK_PATH): () => void {
       if (!stale) {
         throw new Error(`state lock held — another peach-e2e run may be active (pid file ${path})`);
       }
+      // audit N1 (Randy re-check): unlink-then-create let two starters BOTH
+      // hold the lock (each unlinked the other's fresh file). Reclaim by
+      // atomic RENAME of the stale file to a unique name — exactly one
+      // reclaimer's rename succeeds; the loser gets ENOENT and the loop's
+      // next openSync('wx') sees the winner's live lock.
+      const staleTo = `${path}.stale-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       try {
-        unlinkSync(path); // reclaim stale lock, retry once
+        renameSync(path, staleTo);
       } catch {
         /* raced reclaimer won — next openSync('wx') will EEXIST and throw */
+        continue;
+      }
+      // we won the rename — but a live holder may have created the file
+      // between our stale-check and the rename. If the renamed file is NOT
+      // stale (fresh mtime or live pid), put it back and refuse.
+      try {
+        const st2 = statSync(staleTo);
+        const pid2 = Number(readFileSync(staleTo, "utf8").trim());
+        let live = Date.now() - st2.mtimeMs < 2000;
+        if (pid2 > 0) {
+          try {
+            process.kill(pid2, 0);
+            live = true; // pid still alive — this was a live lock
+          } catch (err) {
+            live = live || (err as NodeJS.ErrnoException).code !== "ESRCH";
+          }
+        }
+        if (live) {
+          try {
+            renameSync(staleTo, path); // best-effort restore
+          } catch {
+            /* a newer lock appeared — it wins */
+          }
+          throw new Error(`state lock held — another peach-e2e run may be active (pid file ${path})`);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message.includes("state lock held")) throw err;
+        /* stat/read of renamed file failed — treat as stale, proceed */
       }
     }
   }

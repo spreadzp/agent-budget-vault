@@ -34,6 +34,7 @@ import {
 import { readBalancesAt } from "./peach/verification.mts";
 import {
   advance,
+  canTransition,
   clearPending,
   loadState,
   saveState,
@@ -107,6 +108,15 @@ async function reconcileHash(
 ): Promise<{ state: SpikeState; outcome?: PendingOutcome; rolledBack?: boolean }> {
   const r = await reconcileHashedPending(ctx.client, step, pend);
   if (r.status === "in-flight" || r.status === "unknown") {
+    // audit re-check nit: TX_OUTCOME_UNKNOWN was never entered — persist it
+    // so the operator sees the wedge in the journal, not only in stderr.
+    if (r.status === "unknown" && canTransition(state.stage, "TX_OUTCOME_UNKNOWN")) {
+      try {
+        saveState(advance(state, "TX_OUTCOME_UNKNOWN", `${step} ${pend.txHash}: ${r.reason}`));
+      } catch {
+        /* persist best-effort — the throw below still blocks resend */
+      }
+    }
     throw new Error(
       `${step} tx ${pend.txHash} ${r.status === "in-flight" ? "exists but no receipt — in flight" : `outcome unproven (${r.reason})`} — resend forbidden (D-254-12); retry later`,
     );
@@ -280,13 +290,22 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
   }
 
   // 2) audit N6-M1/L3: dead flags may be stale — "abandoned" is a weaker
-  //    proof than block-body "never-sent". Before dispatch, re-check EVERY
-  //    dead-flagged swap/deposit intent whose nonce slot moved: a hash that
-  //    IS the consuming tx is resurrected (flag cleared+persisted, adopted,
-  //    stage advanced) instead of wedging the run.
-  for (const i of state.intents) {
+  //    proof than block-body "never-sent". Before dispatch, re-check the
+  //    NEWEST dead-flagged swap/deposit intent per step whose nonce slot
+  //    moved: a hash that IS the consuming tx is resurrected (flag
+  //    cleared+persisted, adopted, stage advanced) instead of wedging.
+  //    audit N2 (Randy re-check): "reverted" is already proven by its
+  //    receipt — re-probing resurrects it into reconcileHash, which marks
+  //    it dead again and rolls back a stage that may belong to a NEWER
+  //    mined tx (reproduced wedge). Only "abandoned"/"never-sent" flags
+  //    need the block-body re-check, and only the newest per step.
+  const seenSteps = new Set<TxStep>();
+  for (const i of [...state.intents].reverse()) {
     if ((i.step !== "swap" && i.step !== "deposit") || i.txHash === undefined) continue;
     if (typeof i.params.dead !== "string" || i.nonce < 0) continue;
+    if (i.params.dead === "reverted") continue;
+    if (seenSteps.has(i.step)) continue; // only the newest dead-flag per step
+    seenSteps.add(i.step);
     const n = await ctx.client
       .getTransactionCount({ address: i.sender, blockTag: "latest" })
       .catch(() => -1);
@@ -327,11 +346,30 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
       throw new Error("stage INIT — run 'provision' first");
     }
     case "PROVISIONED":
-    case "QUOTED":
-    case "ABORTED": {
+    case "QUOTED": {
       // safe to take the fresh path — all pendings reconciled above
-      // (ABORTED runs through the journal guard inside runE2E)
       return runE2E(cfg);
+    }
+    case "ABORTED": {
+      // audit N3 (Randy re-check): a journaled mined swap/deposit at
+      // ABORTED (e.g. provenance check failed post-mine) must be
+      // reclaimable — adopt it via the matching SUBMITTED dispatch instead
+      // of stranding USDC and inviting a manual journal edit. Dead/in-
+      // flight intents resolve inside adoptJournaled (rollback → re-enter,
+      // unknown → throw, both fail closed).
+      const live = [...state.intents].reverse().find(
+        (i) =>
+          (i.step === "deposit" || i.step === "swap") &&
+          i.txHash !== undefined &&
+          typeof i.params.dead !== "string",
+      );
+      if (live) {
+        const to: Stage = live.step === "deposit" ? "DEPOSIT_SUBMITTED" : "SWAP_SUBMITTED";
+        state = advance(state, to, `reclaim journaled ${live.step} ${live.txHash}`);
+        saveState(state);
+        return runResume(cfg);
+      }
+      return runE2E(cfg); // fresh path — journal guard inside runE2E
     }
     case "REQUOTE_REQUIRED": {
       state = advance(state, "QUOTED", "re-quote after REQUOTE_REQUIRED");

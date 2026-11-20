@@ -79,12 +79,15 @@ export const abortRun = (t: Transcript, state: SpikeState, msg: string): never =
   if (state.stage !== "ABORTED" && state.stage !== "DEPOSITED") {
     try {
       saveState(advance(state, "ABORTED", msg));
-    } catch {
+    } catch (e1) {
       // audit N-M2: on CAS conflict reload the journal and abort that copy
       try {
         saveState(advance(loadState(), "ABORTED", msg));
-      } catch {
-        /* even the reload failed — transcript is written; fail closed anyway */
+      } catch (e2) {
+        // audit re-check nit: double failure is fail-closed but must be LOUD
+        console.error(
+          `[abortRun] journal abort save failed twice: ${(e1 as Error).message?.slice(0, 120)} / ${(e2 as Error).message?.slice(0, 120)}`,
+        );
       }
     }
   }
@@ -217,6 +220,20 @@ export async function finishDepositPhase(
 ): Promise<SpikeState> {
   const { client, wallet, signer, usdc, vault } = ctx;
   if (received <= 0n) throw new Error("received <= 0 — refusing approve/deposit");
+
+  // audit re-check nit: on a resume path where balance-delta checks were
+  // `skipped` (no archive read), the swap's Transfer events are the only
+  // proof — re-confirm the signer actually holds >= received before
+  // signing an approve+deposit against that number.
+  const held = await client.readContract({
+    address: usdc.address,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [signer],
+  });
+  if (held < received) {
+    abortRun(t, state, `signer USDC balance ${held} < received ${received} — swap events not confirmed`);
+  }
 
   // --- approve leg: only when the FSM hasn't passed APPROVED yet ---
   if (state.stage === "SWAP_VERIFIED" || state.stage === "APPROVE_SUBMITTED") {

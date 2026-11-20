@@ -19,6 +19,28 @@ const cfg = {
 const tokIn = { symbol: "EURC", address: EURC, decimals: 6, scope: "e2e" } as TokenConfig;
 const tokOut = { symbol: "USDC", address: USDC, decimals: 6, scope: "e2e" } as TokenConfig;
 
+// pinned-calldata fixture: 0x02fcde22 selector + 76 words matching the
+// layout safety.mts pins (w2 chainId, w3 router, w4-6 signer, w7-8 tokens,
+// w11 amountIn, w12 minOut, w13 expect, w19 deadline, w26-29 path echo).
+const w = (v: bigint | string): string => {
+  const hex = typeof v === "bigint" ? v.toString(16) : v.replace(/^0x/, "");
+  return hex.padStart(64, "0");
+};
+function pinnedCalldata(over: Record<number, bigint | string> = {}): `0x${string}` {
+  const words: (bigint | string)[] = new Array<bigint | string>(76).fill(0n);
+  words[2] = BigInt(cfg.chainId);
+  words[3] = ROUTER;
+  words[4] = words[5] = words[6] = SIGNER;
+  words[7] = words[26] = EURC;
+  words[8] = words[27] = USDC;
+  words[11] = words[28] = 5000000n;
+  words[12] = words[29] = 5462550n;
+  words[13] = 5490000n;
+  words[19] = BigInt(NOW + 100);
+  for (const [k, v] of Object.entries(over)) words[Number(k)] = v;
+  return `0x02fcde22${words.map(w).join("")}` as `0x${string}`;
+}
+
 function swap(over: Partial<ApiSwapData> = {}): ApiSwapData {
   return {
     request_id: "r1",
@@ -59,7 +81,7 @@ function swap(over: Partial<ApiSwapData> = {}): ApiSwapData {
     recipient: SIGNER,
     tx: {
       to: ROUTER,
-      data: "0xa9059cbb0000000000000000000000009264365408d363e7f142828f063077d7ab7c41d9",
+      data: pinnedCalldata(),
       value: "0",
       entrypoint: "executePlan",
       amount_out_min: "5462550",
@@ -140,6 +162,45 @@ describe("evaluateSwapSafety", () => {
   test("malformed/huge deviation_ratio fails", () => {
     const a = { ...base(swap()), route: { ...routeFixture, deviation_ratio: "1.7" } };
     expect(names(evaluateSwapSafety(a))).toContain("deviation_ratio");
+  });
+  // audit H-C3 (Randy re-check): calldata word pinning
+  test("unknown selector fails", () => {
+    const s = swap({ tx: { ...swap().tx, data: `0xdeadbeef${pinnedCalldata().slice(10)}` } });
+    expect(names(evaluateSwapSafety(base(s)))).toContain("calldata pin");
+  });
+  test("wrong word count fails", () => {
+    const s = swap({ tx: { ...swap().tx, data: `${pinnedCalldata()}${"0".repeat(64)}` } });
+    expect(names(evaluateSwapSafety(base(s)))).toContain("calldata pin");
+  });
+  test("calldata naming another signer fails", () => {
+    const s = swap({
+      tx: { ...swap().tx, data: pinnedCalldata({ 4: "0x0000000000000000000000000000000000000bad" }) },
+    });
+    expect(names(evaluateSwapSafety(base(s)))).toContain("calldata pin");
+  });
+  test("calldata with mismatched amountOutMin fails", () => {
+    const s = swap({
+      tx: { ...swap().tx, data: pinnedCalldata({ 12: 999n }) },
+    });
+    expect(names(evaluateSwapSafety(base(s)))).toContain("calldata pin");
+  });
+  test("calldata with mismatched router word fails", () => {
+    const s = swap({
+      tx: { ...swap().tx, data: pinnedCalldata({ 3: "0x0000000000000000000000000000000000000bad" }) },
+    });
+    expect(names(evaluateSwapSafety(base(s)))).toContain("calldata pin");
+  });
+  test("calldata with past deadline word fails", () => {
+    const s = swap({
+      tx: { ...swap().tx, data: pinnedCalldata({ 19: BigInt(NOW - 10) }) },
+    });
+    expect(names(evaluateSwapSafety(base(s)))).toContain("calldata pin");
+  });
+  test("malformed api unit strings fail api units check", () => {
+    const s = swap({ amount_in: "" });
+    expect(names(evaluateSwapSafety(base(s)))).toContain("api units");
+    const s2 = swap({ expect_amount_out: "0x10" });
+    expect(names(evaluateSwapSafety(base(s2)))).toContain("api units");
   });
 });
 

@@ -527,6 +527,18 @@ export async function submitGuarded(args: {
     value: request.value ?? 0n,
     ...(reuseNonce !== undefined ? { nonce: reuseNonce } : {}),
   });
+  // audit re-check nit: no fee bound on the signed tx — a mispriced fee
+  // market (or misbehaving RPC) could burn real USDC-as-gas. Arc testnet
+  // gasPrice ~25.75 gwei observed; cap at 100 gwei.
+  const feePerGas =
+    (prepared as { maxFeePerGas?: bigint }).maxFeePerGas ??
+    (prepared as { gasPrice?: bigint }).gasPrice;
+  const MAX_FEE_PER_GAS = 100_000_000_000n;
+  if (feePerGas !== undefined && feePerGas > MAX_FEE_PER_GAS) {
+    throw new Error(
+      `${step} tx feePerGas ${feePerGas} wei > cap ${MAX_FEE_PER_GAS} — refusing to sign`,
+    );
+  }
   const raw = await wallet.signTransaction(prepared);
   const txHash = keccak256(raw);
 
