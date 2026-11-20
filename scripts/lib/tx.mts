@@ -368,6 +368,11 @@ export async function liveMoneyIntentReason(
         const n = await client
           .getTransactionCount({ address: i.sender, blockTag: "latest" })
           .catch(() => -1);
+        // audit N6-L1: a failed nonce read means the flag is UNVERIFIED —
+        // block, never trust it on a flaky RPC.
+        if (n === -1) {
+          return `${i.step} ${i.txHash} dead flag unverified (nonce read failed)`;
+        }
         if (n > i.nonce) {
           const cross = await consumingBlock(client, i.sender, i.nonce, i.txHash);
           if (cross === "ours") return `${i.step} ${i.txHash} is mined (dead flag stale)`;
@@ -500,11 +505,19 @@ export async function submitGuarded(args: {
   // The pin is consumed once; a still-live old tx then shows via the
   // block-body recheck in liveMoneyIntentReason.
   let reuseNonce: number | undefined;
+  // audit N6-L2: keep the pin until its slot is provably consumed — a
+  // wasted retry still costs nothing, but dropping the pin early leaves
+  // later retries relying on the guard alone.
+  const latestNonceForPin = await client
+    .getTransactionCount({ address: args.sender, blockTag: "latest" })
+    .catch(() => -1);
   for (const i of state.intents) {
     if (i.step !== step) continue;
-    if (typeof i.params.reuseNonce === "number") {
+    if (typeof i.params.reuseNonce !== "number") continue;
+    if (latestNonceForPin > i.params.reuseNonce) {
+      delete i.params.reuseNonce; // slot provably gone — pin is moot
+    } else if (latestNonceForPin >= 0) {
       reuseNonce = i.params.reuseNonce;
-      delete i.params.reuseNonce;
     }
   }
   const prepared = await wallet.prepareTransactionRequest({

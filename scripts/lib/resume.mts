@@ -186,6 +186,11 @@ async function adoptJournaled(
       const n = await ctx.client
         .getTransactionCount({ address: flagged.sender, blockTag: "latest" })
         .catch(() => -1);
+      if (n === -1) {
+        throw new Error(
+          `nonce read failed for dead-flagged ${step} ${flagged.txHash} — fail closed`,
+        );
+      }
       if (n > flagged.nonce) {
         const cross = await consumingBlock(ctx.client, flagged.sender, flagged.nonce, flagged.txHash);
         if (cross === "ours") {
@@ -274,7 +279,38 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
     }
   }
 
-  // 2) audit N-H1: consumed outcomes advance the stage to the step's
+  // 2) audit N6-M1/L3: dead flags may be stale — "abandoned" is a weaker
+  //    proof than block-body "never-sent". Before dispatch, re-check EVERY
+  //    dead-flagged swap/deposit intent whose nonce slot moved: a hash that
+  //    IS the consuming tx is resurrected (flag cleared+persisted, adopted,
+  //    stage advanced) instead of wedging the run.
+  for (const i of state.intents) {
+    if ((i.step !== "swap" && i.step !== "deposit") || i.txHash === undefined) continue;
+    if (typeof i.params.dead !== "string" || i.nonce < 0) continue;
+    const n = await ctx.client
+      .getTransactionCount({ address: i.sender, blockTag: "latest" })
+      .catch(() => -1);
+    if (n === -1) {
+      throw new Error(
+        `nonce read failed for dead-flagged ${i.step} ${i.txHash} — flag unverified, fail closed`,
+      );
+    }
+    if (n <= i.nonce) continue;
+    const cross = await consumingBlock(ctx.client, i.sender, i.nonce, i.txHash);
+    if (cross === "ours") {
+      delete i.params.dead;
+      saveState(state); // audit N6-L4: flag clear must reach disk
+      const r = await reconcileHash(ctx, state, i.step, { intent: i, txHash: i.txHash });
+      state = r.state;
+      if (r.outcome) rec.outcomes.push(r.outcome);
+    } else if (cross === undefined) {
+      throw new Error(
+        `${i.step} ${i.txHash} flagged dead but consuming block unproven — fail closed`,
+      );
+    }
+  }
+
+  // 3) audit N-H1: consumed outcomes advance the stage to the step's
   //    SUBMITTED stage so dispatch below verifies — never replays — them.
   state = consumeOutcomes(state, rec.outcomes);
 
