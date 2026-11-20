@@ -44,7 +44,7 @@ import {
   type TxIntent,
   type TxStep,
 } from "./state.mts";
-import { reconcileHashedPending, reconcileOrphanIntent } from "./tx.mts";
+import { isNotFound, reconcileHashedPending, reconcileOrphanIntent } from "./tx.mts";
 import { verifyDeposit } from "./vault/deposit.mts";
 import { join } from "node:path";
 import { EVIDENCE_DIR } from "./config.mts";
@@ -427,19 +427,64 @@ export async function abandonStep(cfg: ChainConfig, step: TxStep): Promise<void>
     throw new Error(`no hashed pending for step ${step} — nothing to abandon`);
   }
   const { sender, nonce } = pend.intent;
-  const [rcpt, tx, latest, pendingNonce] = await Promise.all([
-    client.getTransactionReceipt({ hash: pend.txHash }).catch(() => undefined),
-    client.getTransaction({ hash: pend.txHash }).catch(() => undefined),
+
+  // audit N4-H1: absence is proven ONLY by named not-found errors — a
+  // transport error refuses the abandon (fail closed), it never counts as
+  // "tx absent". Two probes ≥1 block apart must BOTH come back absent, and
+  // the nonce reads must show latest === pending === intent nonce (AND
+  // semantics — a live mempool tx shows up in the pending count).
+  const hash = pend.txHash;
+  const absentProbe = async (): Promise<boolean> => {
+    try {
+      await client.getTransactionReceipt({ hash });
+      return false; // has a receipt — live
+    } catch (e) {
+      if (!isNotFound(e)) {
+        throw new Error(`receipt probe failed — refusing to abandon ${step}`);
+      }
+    }
+    try {
+      await client.getTransaction({ hash });
+      return false; // in mempool — live
+    } catch (e) {
+      if (!isNotFound(e)) {
+        throw new Error(`tx probe failed — refusing to abandon ${step}`);
+      }
+    }
+    return true;
+  };
+
+  if (!(await absentProbe())) {
+    throw new Error(`${step} tx ${pend.txHash} exists on-chain — refusing to abandon`);
+  }
+  const [latest, pendingNonce] = await Promise.all([
     client.getTransactionCount({ address: sender }),
     client.getTransactionCount({ address: sender, blockTag: "pending" }),
   ]);
-  if (rcpt || tx) {
-    throw new Error(`${step} tx ${pend.txHash} exists on-chain — refusing to abandon`);
-  }
-  if (nonce < 0 || (latest !== nonce && pendingNonce !== nonce)) {
+  if (nonce < 0 || latest !== nonce || pendingNonce !== nonce) {
     throw new Error(
-      `nonce slot moved (latest=${latest}, pending=${pendingNonce}, intent=${nonce}) — outcome unproven, refusing abandon`,
+      `nonce slot not provably free (latest=${latest}, pending=${pendingNonce}, intent=${nonce}) — refusing abandon`,
     );
+  }
+  // second probe ≥1 block later (audit N4-H1): a tx in propagation between
+  // the probes is caught here instead of being marked dead.
+  const b0 = await client.getBlockNumber().catch(() => 0n);
+  const deadline = Date.now() + 10_000;
+  let moved = false;
+  while (Date.now() < deadline && !moved) {
+    const b = await client.getBlockNumber().catch(() => 0n);
+    if (b0 !== 0n && b > b0) moved = true;
+    else await new Promise((r) => setTimeout(r, 800));
+  }
+  if (!moved) {
+    throw new Error("no new block within window — abandon proof incomplete, refusing");
+  }
+  if (!(await absentProbe())) {
+    throw new Error(`${step} tx ${pend.txHash} appeared on-chain — refusing to abandon`);
+  }
+  const latest2 = await client.getTransactionCount({ address: sender }).catch(() => -1);
+  if (latest2 !== nonce) {
+    throw new Error(`nonce moved between probes (${nonce} → ${latest2}) — refusing abandon`);
   }
   pend.intent.params.dead = "abandoned";
   state = clearPending(state, step);

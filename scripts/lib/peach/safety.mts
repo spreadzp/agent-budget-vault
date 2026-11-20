@@ -128,7 +128,13 @@ export function evaluateSwapSafety(args: {
   // audit N3-L3: a NON-STRING (numeric/other JSON type) deviation_ratio is
   // treated as malformed, not "not reported" — only a string or true
   // absence gets the annotation.
-  if (route.deviation_ratio !== undefined && typeof route.deviation_ratio !== "string") {
+  // audit N4-L3: JSON null counts as absent (some API paths emit it) —
+  // only OTHER non-string types are malformed.
+  if (
+    route.deviation_ratio !== undefined &&
+    route.deviation_ratio !== null &&
+    typeof route.deviation_ratio !== "string"
+  ) {
     checks.push(no("deviation_ratio", `non-string type ${typeof route.deviation_ratio} — malformed`));
   } else {
     const devRaw = typeof route.deviation_ratio === "string" ? route.deviation_ratio.trim() : "";

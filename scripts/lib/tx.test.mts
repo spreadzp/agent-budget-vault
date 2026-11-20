@@ -47,6 +47,7 @@ function mockClients(mode: "ok" | "lost-response" | "rejected" = "ok", pendingNo
   let broadcasts = 0;
   let blockNumber = 100n;
   const seen = new Set<string>();
+  const nf = (name: string): Error => Object.assign(new Error("not found"), { name });
   const wallet = {
     account: { address: SENDER },
     prepareTransactionRequest: async () => ({ nonce: 7 }),
@@ -54,13 +55,16 @@ function mockClients(mode: "ok" | "lost-response" | "rejected" = "ok", pendingNo
   };
   const client = {
     getBlockNumber: async () => ++blockNumber,
-    getTransactionCount: async () => pendingNonce,
+    // archive nonce reads: the slot crossing 7 → 8 happened at block 60
+    getTransactionCount: async (a?: { blockNumber?: bigint }) =>
+      a?.blockNumber !== undefined ? (a.blockNumber >= 60n ? pendingNonce : 7) : pendingNonce,
+    getBlock: async () => ({ transactions: [] }),
     getTransactionReceipt: async ({ hash }: { hash: string }) => {
-      if (!seen.has(hash)) throw new Error("not found");
+      if (!seen.has(hash)) throw nf("TransactionReceiptNotFoundError");
       return okReceipt(hash);
     },
     getTransaction: async ({ hash }: { hash: string }) => {
-      if (!seen.has(hash)) throw new Error("not found");
+      if (!seen.has(hash)) throw nf("TransactionNotFoundError");
       return { hash };
     },
     sendRawTransaction: async ({ serializedTransaction }: { serializedTransaction: string }) => {
