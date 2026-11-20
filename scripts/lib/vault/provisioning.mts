@@ -179,7 +179,9 @@ export async function provision(
     pend.intent.params.dead = r.status;
     state = persistState(clearPending(state, "provision"));
   }
-  if (pend) {
+  // N3-M1: only the orphan (no-txHash) branch reaches here — a hashed
+  // pending was already handled above by the shared reconciler.
+  if (pend && !pend.txHash) {
     await reconcileOrphanIntent(client, signer, "provision", pend);
     state = persistState(clearPending(state, "provision"));
   }

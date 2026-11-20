@@ -19,10 +19,12 @@ import {
   type WalletClient,
 } from "viem";
 import {
+  advance,
   clearPending,
   markSubmitted,
   recordIntent,
   saveState,
+  SUBMIT_ROLLBACK,
   type PendingTx,
   type SpikeState,
   type TxStep,
@@ -81,17 +83,31 @@ export interface ReconcileResult {
   reason?: string;
 }
 
-/** Rebroadcasting a journaled tx older than this is refused (audit N2-M3):
- *  the embedded quote/deadline is stale by then — fail closed instead. */
-export const REBROADCAST_MAX_AGE_MS = 10 * 60 * 1000;
+/** Rebroadcasting a journaled tx older than this is refused (audit N2-M3 +
+ *  N3-M2): the embedded quote deadline is ~120s, so older signed bytes are
+ *  stale — fail closed and let `abandon` clear them manually. */
+export const REBROADCAST_MAX_AGE_MS = 120_000;
+
+/** Distinguish "not found" from transport errors (audit N3-H1): only a named
+ *  not-found error is evidence; 429/5xx/timeout are NOT. */
+const isNotFound = (e: unknown): boolean => {
+  const s = `${(e as { name?: string })?.name ?? ""} ${(e as Error)?.message ?? e ?? ""}`;
+  return /not.?found|does not exist|could not be found/i.test(s);
+};
+
+const toOutcome = (p: TransactionReceipt | "in-pool" | "absent"): ReconcileResult | undefined =>
+  typeof p === "object"
+    ? { receipt: p, status: p.status === "success" ? "mined" : "reverted" }
+    : p === "in-pool"
+      ? { status: "in-flight" }
+      : undefined;
 
 /**
- * Reconcile a persisted txHash. Only two live outcomes exist: mined or
- * in-flight. "never-sent" is ONLY declared on airtight proof — the signer's
- * latest mined nonce moved past the journaled nonce (the slot was consumed
- * by another tx, so this hash can never land). Transport errors, "already
- * known" replies and propagation lag all land in `unknown`/`in-flight`
- * and fail closed (audit N2-H1: an error is never proof of death).
+ * Reconcile a persisted txHash. `never-sent` is declared ONLY on airtight
+ * proof (audit N3-H1): the signer's latest mined nonce moved past the
+ * journaled nonce AND a SECOND independent probe at least one block later
+ * still finds no receipt and no tx. A single lagging/erroring probe is
+ * `unknown` — it is never a death certificate.
  */
 export async function reconcileHashedPending(
   client: PublicClient,
@@ -101,76 +117,121 @@ export async function reconcileHashedPending(
   const hash = pend.txHash!;
   const { sender, nonce } = pend.intent;
 
-  const mined = async (): Promise<ReconcileResult | undefined> => {
-    const rcpt = await client.getTransactionReceipt({ hash }).catch(() => undefined);
-    return rcpt
-      ? { receipt: rcpt, status: rcpt.status === "success" ? "mined" : "reverted" }
-      : undefined;
+  // one pass: receipt → mempool → absent; transport errors THROW (unknown)
+  const probeOnce = async (): Promise<TransactionReceipt | "in-pool" | "absent"> => {
+    try {
+      return await client.getTransactionReceipt({ hash });
+    } catch (e) {
+      if (!isNotFound(e)) throw e;
+    }
+    try {
+      await client.getTransaction({ hash });
+      return "in-pool";
+    } catch (e) {
+      if (!isNotFound(e)) throw e;
+      return "absent";
+    }
   };
-  const inMempool = async (): Promise<boolean> =>
-    client.getTransaction({ hash }).then(() => true).catch(() => false);
-  const latestNonce = async (): Promise<number> =>
+  const probe = (): Promise<ReconcileResult | undefined> =>
+    probeOnce()
+      .then(toOutcome)
+      .catch((e): ReconcileResult => ({
+        status: "unknown",
+        reason: `probe failed: ${String((e as Error)?.message ?? e).slice(0, 80)}`,
+      }));
+
+  const readLatestNonce = (): Promise<number> =>
     client
       .getTransactionCount({ address: sender, blockTag: "latest" })
       .catch(() => -1);
 
-  const rc = await mined();
-  if (rc) return rc;
-  if (await inMempool()) return { status: "in-flight" };
-
-  // airtight dead proof: nonce slot consumed by a different tx.
-  // nonce === -1 means the wallet never told us — proof impossible.
-  let n = await latestNonce();
-  if (nonce >= 0 && n > nonce) {
-    return { status: "never-sent", reason: `nonce ${nonce} already consumed on-chain` };
-  }
-
-  const raw =
-    typeof pend.intent.params.raw === "string"
-      ? (pend.intent.params.raw as `0x${string}`)
-      : undefined;
-  if (raw === undefined) {
-    return { status: "unknown", reason: "no receipt, no tx, no journaled raw — cannot prove dead" };
-  }
-  if (keccak256(raw) !== hash) {
-    return { status: "unknown", reason: "keccak256(raw) != journaled txHash — journal corruption" };
-  }
-  const ageMs = Date.now() - Date.parse(pend.intent.createdAt);
-  if (Number.isFinite(ageMs) && ageMs > REBROADCAST_MAX_AGE_MS) {
-    return {
-      status: "unknown",
-      reason: `journaled tx is ${Math.round(ageMs / 60000)}min old — quote/deadline stale, manual check required`,
-    };
-  }
-  try {
-    await client.sendRawTransaction({ serializedTransaction: raw });
-  } catch (e) {
-    // send failed — the node may still hold it ("already known"), another tx
-    // may have taken the nonce, or the RPC may simply be down.
-    const rc2 = await mined();
-    if (rc2) return rc2;
-    if (await inMempool()) return { status: "in-flight" };
-    n = await latestNonce();
-    if (nonce >= 0 && n > nonce) {
-      return { status: "never-sent", reason: `nonce ${nonce} consumed on-chain` };
+  const waitNextBlock = async (): Promise<boolean> => {
+    const b0 = await client.getBlockNumber().catch(() => 0n);
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const b = await client.getBlockNumber().catch(() => 0n);
+      if (b0 === 0n || b > b0) return b0 !== 0n;
+      await new Promise((r) => setTimeout(r, 800));
     }
-    return {
-      status: "unknown",
-      reason: `rebroadcast rejected (${String((e as Error)?.message ?? e).slice(0, 80)}) — outcome unproven`,
-    };
+    return false;
+  };
+
+  const p1 = await probe();
+  if (p1) return p1;
+
+  // p1 was "absent" — check whether the nonce slot is already consumed
+  let latest = await readLatestNonce();
+  if (latest === -1) return { status: "unknown", reason: "nonce read failed" };
+  let nonceTaken = nonce >= 0 && latest > nonce;
+
+  if (!nonceTaken) {
+    // nonce free: rebroadcast the journaled raw bytes if we hold them
+    const raw =
+      typeof pend.intent.params.raw === "string"
+        ? (pend.intent.params.raw as `0x${string}`)
+        : undefined;
+    if (raw === undefined) {
+      return {
+        status: "unknown",
+        reason: `no receipt/tx for ${hash} and no journaled raw — outcome unproven`,
+      };
+    }
+    if (keccak256(raw) !== hash) {
+      return { status: "unknown", reason: "keccak256(raw) != journaled txHash — journal corruption" };
+    }
+    const ageMs = Date.now() - Date.parse(pend.intent.createdAt);
+    if (Number.isFinite(ageMs) && ageMs > REBROADCAST_MAX_AGE_MS) {
+      return {
+        status: "unknown",
+        reason: `intent stale (${Math.round(ageMs / 1000)}s > ${REBROADCAST_MAX_AGE_MS / 1000}s deadline) — run 'abandon ${step}' to mark it dead`,
+      };
+    }
+    try {
+      await client.sendRawTransaction({ serializedTransaction: raw });
+    } catch (e) {
+      // resend rejected — maybe "already known" (node holds it) or the nonce
+      // was taken meanwhile; re-probe before deciding anything.
+      const p2 = await probe();
+      if (p2) return p2;
+      latest = await readLatestNonce();
+      if (latest === -1 || !(nonce >= 0 && latest > nonce)) {
+        return {
+          status: "unknown",
+          reason: `rebroadcast rejected (${String((e as Error)?.message ?? e).slice(0, 80)}) — outcome unproven`,
+        };
+      }
+      nonceTaken = true;
+    }
+    if (!nonceTaken) {
+      const rc = await client
+        .waitForTransactionReceipt({ hash, timeout: 60_000 })
+        .catch(() => undefined);
+      if (rc) return { receipt: rc, status: rc.status === "success" ? "mined" : "reverted" };
+      return { status: "in-flight", reason: "rebroadcast accepted — awaiting receipt" };
+    }
   }
-  const r2 = await client
-    .waitForTransactionReceipt({ hash, timeout: 60_000 })
-    .catch(() => undefined);
-  if (!r2) return { status: "in-flight", reason: "rebroadcast accepted — awaiting receipt" };
-  return { receipt: r2, status: r2.status === "success" ? "mined" : "reverted" };
+
+  // nonceTaken: dead only after a SECOND absent probe at least one block
+  // later — a tx that mined between the probes is caught by this re-check.
+  const moved = await waitNextBlock();
+  const p2 = await probe();
+  if (p2) return p2;
+  if (!moved) {
+    return { status: "unknown", reason: "no new block within window — dead proof incomplete" };
+  }
+  return {
+    status: "never-sent",
+    reason: `nonce ${nonce} consumed on-chain; absent across two probes ≥1 block apart`,
+  };
 }
 
 /**
  * Signing guard (audit N2-H1/#4): refuse to sign a fresh `step` tx when the
  * journal holds a live (mined / in-flight / rebroadcastable / unproven)
- * same-step hash journaled since the last completed DEPOSITED. Only hashes
- * marked `params.dead` or proven reverted are exempt — they consumed nothing.
+ * same-step hash journaled since the last completed DEPOSITED. Exempt:
+ * proven-reverted hashes and dead-marked intents — but a dead flag is only
+ * trusted AFTER a receipt re-probe also comes back empty (audit N3-H1 #5),
+ * so a misclassified flag cannot hide a live tx.
  */
 export async function liveMoneyIntentReason(
   client: PublicClient,
@@ -186,13 +247,13 @@ export async function liveMoneyIntentReason(
     if (i.step !== "swap" && i.step !== "deposit") continue;
     if (step && i.step !== step) continue;
     if (i.txHash === undefined) continue;
-    if (typeof i.params.dead === "string") continue;
     if (lastDone !== undefined && i.createdAt <= lastDone) continue;
     const rcpt = await client.getTransactionReceipt({ hash: i.txHash }).catch(() => undefined);
     if (rcpt) {
       if (rcpt.status === "success") return `${i.step} ${i.txHash} is mined`;
       continue; // reverted consumed nothing
     }
+    if (typeof i.params.dead === "string") continue;
     const inFlight = await client
       .getTransaction({ hash: i.txHash })
       .then(() => true)
@@ -201,11 +262,8 @@ export async function liveMoneyIntentReason(
     if (typeof i.params.raw === "string") {
       return `${i.step} ${i.txHash} has journaled raw bytes (rebroadcastable)`;
     }
-    const n = await client
-      .getTransactionCount({ address: i.sender, blockTag: "latest" })
-      .catch(() => -1);
-    if (n <= i.nonce) return `${i.step} ${i.txHash} outcome unproven`;
-    // nonce consumed → provably dead → allowed
+    // no receipt, no tx, no raw, not dead-marked: death unproven → block
+    return `${i.step} ${i.txHash} outcome unproven`;
   }
   return undefined;
 }
@@ -216,7 +274,7 @@ async function adoptPending(args: {
   pend: PendingTx;
   sender: `0x${string}`;
   expectedTo?: `0x${string}`;
-}): Promise<{ receipt: TransactionReceipt } | { dead: "reverted" | "never-sent" } | never> {
+}): Promise<{ receipt: TransactionReceipt } | { dead: "reverted" | "never-sent" }> {
   const { client, step, pend } = args;
   const r = await reconcileHashedPending(client, step, pend);
   if (r.status === "in-flight") {
@@ -239,7 +297,7 @@ async function adoptPending(args: {
   }
   const wantTo = (args.expectedTo ?? (pend.intent.params.to as string | undefined) ?? "").toLowerCase();
   if (wantTo && (rcpt.to ?? "").toLowerCase() !== wantTo) {
-    throw new Error(`${step} tx ${pend.txHash} to ${rcpt.to} != expected ${args.expectedTo ?? pend.intent.params.to}`);
+    throw new Error(`${step} tx ${pend.txHash} to ${rcpt.to ?? "null"} != expected ${wantTo}`);
   }
   return { receipt: rcpt };
 }
@@ -284,9 +342,13 @@ export async function submitGuarded(args: {
     if ("dead" in out) {
       // Provably dead: reverted on-chain, or nonce consumed by another tx —
       // this hash can never land. Mark the intent dead so guards skip it,
-      // then clear; the stage rollback is the caller's/resume's job.
+      // then clear and roll the stage back so resume can re-plan (N3-L1).
       pend.intent.params.dead = out.dead;
       state = clearPending(state, step);
+      const rb = SUBMIT_ROLLBACK[step];
+      if (rb && state.stage === rb.submitted) {
+        state = advance(state, rb.back, `${step} tx ${out.dead}`);
+      }
       saveState(state, statePath);
       throw new Error(
         `${step} tx ${pend.txHash} ${out.dead === "reverted" ? "reverted" : "never reached the chain"} — ` +
@@ -348,8 +410,14 @@ export async function submitGuarded(args: {
   if (broadcastErr !== undefined) {
     const rcpt = await client.getTransactionReceipt({ hash: txHash }).catch(() => undefined);
     if (!rcpt) {
+      const why =
+        broadcastErr instanceof Error
+          ? broadcastErr.message.slice(0, 120)
+          : typeof broadcastErr === "string"
+            ? broadcastErr.slice(0, 120)
+            : "unknown broadcast error";
       throw new Error(
-        `${step} broadcast failed (${broadcastErr instanceof Error ? broadcastErr.message.slice(0, 120) : String(broadcastErr)}) — ` +
+        `${step} broadcast failed (${why}) — ` +
           `tx ${txHash} persisted (hash+raw); resume will rebroadcast identical bytes or reconcile`,
       );
     }

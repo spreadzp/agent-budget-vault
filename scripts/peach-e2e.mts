@@ -8,6 +8,7 @@
  *   e2e        guided funding: quote+confirm → swap → verify → approve → deposit (SLICE-254-4)
  *   resume     reconcile/resume a partially completed run (SLICE-254-5)
  *   status     environment gate: RPC/chainId/factory/token metadata/SDK/signer (SLICE-254-1)
+ *   abandon    operator exit: mark a wedged pending dead (nonce-slot proof) — audit N3-M2
  *
  * Signer key: PRIVATE_KEY in env — only the derived address is ever logged.
  */
@@ -15,7 +16,7 @@ import { parseCommand } from "./lib/cli.mts";
 import { loadSpikeConfig, type TokenConfig } from "./lib/config.mts";
 import { runE2E } from "./lib/e2e.mts";
 import { negExpiredQuote, negInsufficientEurc, negWrongChain } from "./lib/neg.mts";
-import { runResume } from "./lib/resume.mts";
+import { abandonStep, runResume } from "./lib/resume.mts";
 import { cirbtcUsdSizes, runSweep, writeSweepArtifact } from "./lib/peach/sweep.mts";
 import { acquireLock } from "./lib/state.mts";
 
@@ -26,7 +27,7 @@ const log = (...a: unknown[]) => console.log(`[${new Date().toISOString()}]`, ..
 
 // Commands that mutate the FSM journal must hold the exclusive lock — two
 // concurrent runs racing the journal are a double-send vector (audit C2).
-const JOURNAL_CMDS = new Set(["provision", "e2e", "resume"]);
+const JOURNAL_CMDS = new Set(["provision", "e2e", "resume", "abandon"]);
 
 async function main(): Promise<void> {
   const { cmd, args } = parseCommand(process.argv.slice(2));
@@ -142,6 +143,15 @@ async function dispatch(
     const t = await runResume(cfg.chains.testnet);
     log(`result=${t.result} swapTx=${t.swapTx ?? "-"} depositTx=${t.depositTx ?? "-"}`);
     log(`transcript -> spike-evidence/e2e/resume-transcript.json`);
+    return;
+  }
+
+  if (cmd === "abandon") {
+    const step = args[0] as Parameters<typeof abandonStep>[1];
+    if (!["provision", "eurc_approve", "swap", "approve", "deposit"].includes(step)) {
+      throw new Error("usage: abandon <provision|eurc_approve|swap|approve|deposit>");
+    }
+    await abandonStep(cfg.chains.testnet, step);
     return;
   }
 

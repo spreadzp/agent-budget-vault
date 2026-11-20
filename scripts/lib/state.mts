@@ -25,6 +25,13 @@ export const STAGES = [...LINEAR_STAGES, ...SIDE_STAGES] as const;
 export type Stage = (typeof STAGES)[number];
 export type TxStep = "provision" | "eurc_approve" | "swap" | "approve" | "deposit";
 
+/** Linear stage each step's *SUBMITTED stage rolls back to on a dead tx. */
+export const SUBMIT_ROLLBACK: Partial<Record<TxStep, { submitted: Stage; back: Stage }>> = {
+  swap: { submitted: "SWAP_SUBMITTED", back: "QUOTED" },
+  approve: { submitted: "APPROVE_SUBMITTED", back: "SWAP_VERIFIED" },
+  deposit: { submitted: "DEPOSIT_SUBMITTED", back: "APPROVED" },
+};
+
 export interface TxIntent {
   step: TxStep;
   sender: `0x${string}`;
@@ -141,7 +148,7 @@ function validateState(raw: unknown): SpikeState {
   if (typeof s.stage !== "string" || !(STAGES as readonly string[]).includes(s.stage)) {
     throw new Error(`state file: bad stage ${String(s.stage)}`);
   }
-  if (s.vault !== undefined && !/^0x[0-9a-fA-F]{40}$/.test(String(s.vault))) {
+  if (s.vault !== undefined && (typeof s.vault !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(s.vault))) {
     throw new Error("state file: bad vault address");
   }
   const pending = (s.pending ?? {}) as Record<string, unknown>;
@@ -153,7 +160,7 @@ function validateState(raw: unknown): SpikeState {
   if (!Array.isArray(s.intents ?? []) || !Array.isArray(s.history ?? [])) {
     throw new Error("state file: intents/history not arrays");
   }
-  return { ...initialState(), ...s, version: Number(s.version ?? 0) } as SpikeState;
+  return { ...initialState(), ...s, version: Number(s.version ?? 0) };
 }
 
 export function loadState(path = STATE_PATH): SpikeState {

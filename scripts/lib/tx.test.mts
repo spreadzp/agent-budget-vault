@@ -45,6 +45,7 @@ const okReceipt = (hash: string, over: Partial<TransactionReceipt> = {}) =>
 /** mode: ok | lost-response (node accepted, reply lost) | rejected (never arrived) */
 function mockClients(mode: "ok" | "lost-response" | "rejected" = "ok", pendingNonce = 7) {
   let broadcasts = 0;
+  let blockNumber = 100n;
   const seen = new Set<string>();
   const wallet = {
     account: { address: SENDER },
@@ -52,6 +53,7 @@ function mockClients(mode: "ok" | "lost-response" | "rejected" = "ok", pendingNo
     signTransaction: async () => SIGNED,
   };
   const client = {
+    getBlockNumber: async () => ++blockNumber,
     getTransactionCount: async () => pendingNonce,
     getTransactionReceipt: async ({ hash }: { hash: string }) => {
       if (!seen.has(hash)) throw new Error("not found");

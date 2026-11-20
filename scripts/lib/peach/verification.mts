@@ -76,8 +76,8 @@ export function verifySwap(args: {
     const token = log.address.toLowerCase();
     if (token !== args.tokenIn.toLowerCase() && token !== args.tokenOut.toLowerCase()) continue;
     if (!/^0x[0-9a-fA-F]{64}$/.test(log.data)) continue;
-    const from = topicAddr(log.topics[1]!);
-    const to = topicAddr(log.topics[2]!);
+    const from = topicAddr(log.topics[1]);
+    const to = topicAddr(log.topics[2]);
     const value = BigInt(log.data);
     if (token === args.tokenIn.toLowerCase() && from === sig) outSpent += value;
     if (token === args.tokenOut.toLowerCase() && to === sig) inReceived += value;

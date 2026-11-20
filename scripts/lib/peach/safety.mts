@@ -125,17 +125,24 @@ export function evaluateSwapSafety(args: {
   // for EURC→USDC (verified across every live run) — absence is annotated,
   // not fatal, because route.amount_in equality and the expect-vs-route
   // drift bound below enforce the same quote-integrity purpose.
-  const devRaw = typeof route.deviation_ratio === "string" ? route.deviation_ratio.trim() : "";
-  if (devRaw === "") {
-    checks.push(yes("deviation_ratio", "not reported by API — drift bound still enforced"));
+  // audit N3-L3: a NON-STRING (numeric/other JSON type) deviation_ratio is
+  // treated as malformed, not "not reported" — only a string or true
+  // absence gets the annotation.
+  if (route.deviation_ratio !== undefined && typeof route.deviation_ratio !== "string") {
+    checks.push(no("deviation_ratio", `non-string type ${typeof route.deviation_ratio} — malformed`));
   } else {
-    const devOk =
-      /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(devRaw) && Math.abs(Number(devRaw)) <= DEVIATION_BOUND;
-    checks.push(
-      devOk
-        ? yes("deviation_ratio bounded", String(route.deviation_ratio))
-        : no("deviation_ratio", `${route.deviation_ratio} malformed or |dev| > ${DEVIATION_BOUND}`),
-    );
+    const devRaw = typeof route.deviation_ratio === "string" ? route.deviation_ratio.trim() : "";
+    if (devRaw === "") {
+      checks.push(yes("deviation_ratio", "not reported by API — drift bound still enforced"));
+    } else {
+      const devOk =
+        /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(devRaw) && Math.abs(Number(devRaw)) <= DEVIATION_BOUND;
+      checks.push(
+        devOk
+          ? yes("deviation_ratio bounded", String(route.deviation_ratio))
+          : no("deviation_ratio", `${route.deviation_ratio} malformed or |dev| > ${DEVIATION_BOUND}`),
+      );
+    }
   }
   checks.push(
     BigInt(swap.tx.amount_out_min) >= expectedMin && BigInt(swap.tx.amount_out_min) > 0n

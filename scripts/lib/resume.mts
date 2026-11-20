@@ -20,7 +20,7 @@
 //  - receipt binding: from==sender AND to==intent.params.to (M5, N-L3).
 import type { TransactionReceipt } from "viem";
 import type { ChainConfig } from "./config.mts";
-import { ERC20_ABI, FACTORY_ABI } from "./chain.mts";
+import { ERC20_ABI, FACTORY_ABI, publicClientFor } from "./chain.mts";
 import {
   buildCtx,
   finishDepositPhase,
@@ -37,6 +37,7 @@ import {
   clearPending,
   loadState,
   saveState,
+  SUBMIT_ROLLBACK,
   type PendingTx,
   type SpikeState,
   type Stage,
@@ -58,11 +59,7 @@ interface PendingOutcome {
 }
 
 /** Linear stage each step's *SUBMITTED stage rolls back to on a dead tx. */
-const ROLLBACK: Partial<Record<TxStep, { submitted: Stage; back: Stage }>> = {
-  swap: { submitted: "SWAP_SUBMITTED", back: "QUOTED" },
-  approve: { submitted: "APPROVE_SUBMITTED", back: "SWAP_VERIFIED" },
-  deposit: { submitted: "DEPOSIT_SUBMITTED", back: "APPROVED" },
-};
+const ROLLBACK = SUBMIT_ROLLBACK;
 
 const STAGE_ORDER: Stage[] = [
   "INIT",
@@ -93,7 +90,7 @@ function bindReceipt(
   // audit N-L3: the journaled target must match the receipt's
   const wantTo = typeof intent.params.to === "string" ? intent.params.to.toLowerCase() : "";
   if (wantTo && (rcpt.to ?? "").toLowerCase() !== wantTo) {
-    throw new Error(`${step} tx ${txHash} to ${rcpt.to} != journaled ${intent.params.to}`);
+    throw new Error(`${step} tx ${txHash} to ${rcpt.to ?? "null"} != journaled ${wantTo}`);
   }
 }
 
@@ -240,7 +237,7 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
       abi: FACTORY_ABI,
       functionName: "vaultOf",
       args: [ctx.signer],
-    }).catch(() => undefined)) as `0x${string}` | undefined;
+    }).catch(() => undefined));
     if (v && v !== "0x0000000000000000000000000000000000000000") {
       state = { ...state, vault: v };
       state = advance(state, "PROVISIONED", `adopted vault ${v}`);
@@ -355,8 +352,14 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
       const dep =
         rec.outcomes.find((o) => o.step === "deposit") ?? adj.outcome;
       if (!dep) {
-        // audit N-M4: reached only for a provably dead deposit (reverted or
-        // never-landed — an RPC error throws earlier). Retry the leg (M3).
+        // audit N3-L2: retry the leg ONLY when the journaled deposit was
+        // proven dead (rolledBack) — otherwise the outcome is unproven and
+        // signing another deposit could double-spend.
+        if (!adj.rolledBack) {
+          throw new Error(
+            "stage DEPOSIT_SUBMITTED but no live/dead deposit proof — inspect the journal manually",
+          );
+        }
         const received = requiredReceived(state);
         await finishDepositPhase(ctx, state, t, received);
         writeTranscript(t, RESUME_TRANSCRIPT);
@@ -406,4 +409,44 @@ export async function runResume(cfg: ChainConfig): Promise<Transcript> {
     default:
       throw new Error(`resume: unhandled stage ${String(state.stage)}`);
   }
+}
+
+/**
+ * Operator exit for a wedged pending (audit N3-M2): marks a hashed pending
+ * dead — only when the chain itself proves the tx never landed AND the nonce
+ * slot is still free (latest == intent.nonce OR pending == intent.nonce, so
+ * no OTHER tx could have consumed it either). Roll back the stage so the
+ * step can be re-planned. Any live trace refuses the abandon.
+ */
+export async function abandonStep(cfg: ChainConfig, step: TxStep): Promise<void> {
+  // deliberately not buildCtx: abandon must work even without a vault
+  const client = publicClientFor(cfg);
+  let state = loadState();
+  const pend = state.pending[step];
+  if (!pend?.txHash) {
+    throw new Error(`no hashed pending for step ${step} — nothing to abandon`);
+  }
+  const { sender, nonce } = pend.intent;
+  const [rcpt, tx, latest, pendingNonce] = await Promise.all([
+    client.getTransactionReceipt({ hash: pend.txHash }).catch(() => undefined),
+    client.getTransaction({ hash: pend.txHash }).catch(() => undefined),
+    client.getTransactionCount({ address: sender }),
+    client.getTransactionCount({ address: sender, blockTag: "pending" }),
+  ]);
+  if (rcpt || tx) {
+    throw new Error(`${step} tx ${pend.txHash} exists on-chain — refusing to abandon`);
+  }
+  if (nonce < 0 || (latest !== nonce && pendingNonce !== nonce)) {
+    throw new Error(
+      `nonce slot moved (latest=${latest}, pending=${pendingNonce}, intent=${nonce}) — outcome unproven, refusing abandon`,
+    );
+  }
+  pend.intent.params.dead = "abandoned";
+  state = clearPending(state, step);
+  const rb = SUBMIT_ROLLBACK[step];
+  if (rb && state.stage === rb.submitted) {
+    state = advance(state, rb.back, `${step} abandoned by operator`);
+  }
+  saveState(state);
+  console.log(`abandoned ${step} tx ${pend.txHash} — pending cleared, stage ${state.stage}`);
 }
