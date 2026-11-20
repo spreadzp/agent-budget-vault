@@ -114,6 +114,63 @@ const toOutcome = (p: TransactionReceipt | "in-pool" | "absent"): ReconcileResul
       : undefined;
 
 /**
+ * Airtight dead proof (audit N4-M2 + N5-L2): binary-search archive reads
+ * for the first block where the sender's mined nonce passed `nonce`, then
+ * verify WHICH tx consumed the slot inside that block's body:
+ *   - a tx with (from==sender, nonce==nonce, hash==ours)      → "ours"
+ *   - a tx with (from==sender, nonce==nonce, hash!=ours)      → "other"
+ *   - hash-only body, or no matching tx (stripped/broken idx) → undefined
+ * The body is authoritative over receipt/mempool indexes; an inconclusive
+ * read must FAIL CLOSED (undefined), never guess.
+ */
+export async function consumingBlock(
+  client: PublicClient,
+  sender: `0x${string}`,
+  nonce: number,
+  hash: `0x${string}`,
+): Promise<"ours" | "other" | undefined> {
+  const hi = await client.getBlockNumber().catch(() => undefined);
+  if (hi === undefined) return undefined;
+  const cHi = await client
+    .getTransactionCount({ address: sender, blockNumber: hi })
+    .catch(() => undefined);
+  if (cHi === undefined || cHi <= nonce) return undefined;
+  let lo = 0n;
+  let h = hi;
+  while (h - lo > 1n) {
+    const mid = (lo + h) >> 1n;
+    const c = await client
+      .getTransactionCount({ address: sender, blockNumber: mid })
+      .catch(() => undefined);
+    if (c === undefined) return undefined;
+    if (c > nonce) h = mid;
+    else lo = mid;
+  }
+  const body = await client
+    .getBlock({ blockNumber: h, includeTransactions: true })
+    .catch(() => undefined);
+  if (!body) return undefined;
+  const txs = body.transactions as readonly (string | { hash?: string; from?: string; nonce?: number })[];
+  let sawConsuming = false;
+  for (const t of txs) {
+    const th = typeof t === "string" ? t : t.hash;
+    if (typeof th === "string" && th.toLowerCase() === hash.toLowerCase()) return "ours";
+    // N5-L2: "other" requires an OBJECT tx that provably consumed our slot —
+    // same sender, same nonce, different hash. A hash-only body that lacks
+    // our hash is inconclusive, not a death certificate.
+    if (
+      typeof t === "object" &&
+      typeof t.from === "string" &&
+      t.from.toLowerCase() === sender.toLowerCase() &&
+      t.nonce === nonce
+    ) {
+      sawConsuming = true;
+    }
+  }
+  return sawConsuming ? "other" : undefined;
+}
+
+/**
  * Reconcile a persisted txHash. `never-sent` is declared ONLY on airtight
  * proof (audit N3-H1): the signer's latest mined nonce moved past the
  * journaled nonce AND a SECOND independent probe at least one block later
@@ -167,40 +224,8 @@ export async function reconcileHashedPending(
     return false;
   };
 
-  /**
-   * Airtight dead proof (audit N4-M2): binary-search archive reads for the
-   * first block where the sender's mined nonce passed `nonce`, then check
-   * whether OUR hash is in that block's body. The block body is
-   * authoritative over any receipt index — lagging indexes can't fake it.
-   * Returns "ours" | "other" | undefined (inconclusive ⇒ unknown).
-   */
-  const consumingBlock = async (): Promise<bigint | "ours" | "other" | undefined> => {
-    const hi = await client.getBlockNumber().catch(() => undefined);
-    if (hi === undefined) return undefined;
-    const cHi = await client
-      .getTransactionCount({ address: sender, blockNumber: hi })
-      .catch(() => undefined);
-    if (cHi === undefined || cHi <= nonce) return undefined;
-    let lo = 0n;
-    let h = hi;
-    while (h - lo > 1n) {
-      const mid = (lo + h) >> 1n;
-      const c = await client
-        .getTransactionCount({ address: sender, blockNumber: mid })
-        .catch(() => undefined);
-      if (c === undefined) return undefined;
-      if (c > nonce) h = mid;
-      else lo = mid;
-    }
-    const body = await client
-      .getBlock({ blockNumber: h, includeTransactions: true })
-      .catch(() => undefined);
-    if (!body) return undefined;
-    const hit = (body.transactions as readonly (string | { hash: string })[]).some(
-      (t) => (typeof t === "string" ? t : t.hash).toLowerCase() === hash.toLowerCase(),
-    );
-    return hit ? "ours" : "other";
-  };
+  const findConsumingBlock = (): Promise<"ours" | "other" | undefined> =>
+    consumingBlock(client, sender, nonce, hash);
 
   const p1 = await probe();
   if (p1) return p1;
@@ -226,7 +251,7 @@ export async function reconcileHashedPending(
       return { status: "unknown", reason: "keccak256(raw) != journaled txHash — journal corruption" };
     }
     const ageMs = Date.now() - Date.parse(pend.intent.createdAt);
-    if (!Number.isFinite(ageMs) || ageMs > REBROADCAST_MAX_AGE_MS) {
+    if (!Number.isFinite(ageMs) || ageMs > REBROADCAST_MAX_AGE_MS || ageMs < -5_000) {
       return {
         status: "unknown",
         reason: `intent ${Number.isFinite(ageMs) ? `stale (${Math.round(ageMs / 1000)}s > ${REBROADCAST_MAX_AGE_MS / 1000}s deadline)` : "has malformed createdAt"} — run 'abandon ${step}' to mark it dead`,
@@ -266,7 +291,7 @@ export async function reconcileHashedPending(
   if (!moved) {
     return { status: "unknown", reason: "no new block within window — dead proof incomplete" };
   }
-  const cross = await consumingBlock();
+  const cross = await findConsumingBlock();
   if (cross === "ours") {
     // our own tx consumed the slot — it IS mined; the receipt index is just
     // lagging. Fetch it; if the index still misses, the tx is provably on
@@ -302,14 +327,18 @@ export async function liveMoneyIntentReason(
 ): Promise<string | undefined> {
   const doneTimes = state.history
     .filter((h) => h.stage === "DEPOSITED")
-    .map((h) => h.at)
-    .sort();
+    .map((h) => Date.parse(h.at))
+    .filter((t) => !Number.isNaN(t))
+    .sort((a, b) => a - b);
   const lastDone = doneTimes.length ? doneTimes[doneTimes.length - 1] : undefined;
   for (const i of state.intents) {
     if (i.step !== "swap" && i.step !== "deposit") continue;
     if (step && i.step !== step) continue;
     if (i.txHash === undefined) continue;
-    if (lastDone !== undefined && i.createdAt <= lastDone) continue;
+    // audit N5-L3: parse timestamps — a malformed createdAt sorts before
+    // any real one under string compare and would smuggle a live intent.
+    const t = Date.parse(i.createdAt);
+    if (!Number.isNaN(t) && lastDone !== undefined && t <= lastDone) continue;
     // audit N4-L1: a transport error on the receipt probe is NOT absence —
     // block rather than trusting any flag or inference on flaky RPC.
     let rcpt: TransactionReceipt | undefined;
@@ -330,9 +359,25 @@ export async function liveMoneyIntentReason(
       if (!isNotFound(e)) return `${i.step} ${i.txHash} tx probe failed — outcome unproven`;
     }
     if (inFlight) return `${i.step} ${i.txHash} is in-flight`;
-    // audit N4-H1: a dead flag is trusted only AFTER live probes come back
-    // empty — an "abandoned" hash that is still in the pool stays blocking.
-    if (typeof i.params.dead === "string") continue;
+    if (typeof i.params.dead === "string") {
+      // audit N5-M1: a dead flag is only as strong as its proof — "abandoned"
+      // (mempool-absent) is weaker than "never-sent" (block-body). If the
+      // nonce slot moved, re-run the block-body proof before trusting ANY
+      // dead flag; a landed "abandoned" tx keeps blocking.
+      if (i.nonce >= 0) {
+        const n = await client
+          .getTransactionCount({ address: i.sender, blockTag: "latest" })
+          .catch(() => -1);
+        if (n > i.nonce) {
+          const cross = await consumingBlock(client, i.sender, i.nonce, i.txHash);
+          if (cross === "ours") return `${i.step} ${i.txHash} is mined (dead flag stale)`;
+          if (cross === undefined) {
+            return `${i.step} ${i.txHash} flagged dead but consuming block unproven`;
+          }
+        }
+      }
+      continue;
+    }
     if (typeof i.params.raw === "string") {
       return `${i.step} ${i.txHash} has journaled raw bytes (rebroadcastable)`;
     }
@@ -449,11 +494,25 @@ export async function submitGuarded(args: {
   }
 
   // 1) prepare + sign locally — txHash known before broadcast
+  // audit N5-M1(a): if a previous same-step intent was abandoned, reuse its
+  // nonce — two txs at the same slot can never both land, so the pinned
+  // retry is safe by construction even if the old one was secretly live.
+  // The pin is consumed once; a still-live old tx then shows via the
+  // block-body recheck in liveMoneyIntentReason.
+  let reuseNonce: number | undefined;
+  for (const i of state.intents) {
+    if (i.step !== step) continue;
+    if (typeof i.params.reuseNonce === "number") {
+      reuseNonce = i.params.reuseNonce;
+      delete i.params.reuseNonce;
+    }
+  }
   const prepared = await wallet.prepareTransactionRequest({
     account: wallet.account,
     to: request.to,
     data: request.data,
     value: request.value ?? 0n,
+    ...(reuseNonce !== undefined ? { nonce: reuseNonce } : {}),
   });
   const raw = await wallet.signTransaction(prepared);
   const txHash = keccak256(raw);

@@ -44,7 +44,7 @@ import {
   type TxIntent,
   type TxStep,
 } from "./state.mts";
-import { isNotFound, reconcileHashedPending, reconcileOrphanIntent } from "./tx.mts";
+import { consumingBlock, isNotFound, reconcileHashedPending, reconcileOrphanIntent } from "./tx.mts";
 import { verifyDeposit } from "./vault/deposit.mts";
 import { join } from "node:path";
 import { EVIDENCE_DIR } from "./config.mts";
@@ -168,7 +168,36 @@ async function adoptJournaled(
   const done = [...state.intents]
     .reverse()
     .find((i) => i.step === step && i.txHash !== undefined && !i.params.dead);
-  if (!done?.txHash) return { state };
+  if (!done?.txHash) {
+    // audit N5-M1: a dead flag may be stale — "abandoned" is a weaker proof
+    // than "never-sent" (block-body). If the nonce slot moved, re-check the
+    // newest dead-flagged intent via the block-body proof: a hash that IS
+    // the consuming tx is adopted, not skipped.
+    const flagged = [...state.intents]
+      .reverse()
+      .find(
+        (i) =>
+          i.step === step &&
+          i.txHash !== undefined &&
+          typeof i.params.dead === "string" &&
+          i.nonce >= 0,
+      );
+    if (flagged?.txHash) {
+      const n = await ctx.client
+        .getTransactionCount({ address: flagged.sender, blockTag: "latest" })
+        .catch(() => -1);
+      if (n > flagged.nonce) {
+        const cross = await consumingBlock(ctx.client, flagged.sender, flagged.nonce, flagged.txHash);
+        if (cross === "ours") {
+          // the "dead" tx actually landed — clear the stale flag and adopt it
+          delete flagged.params.dead;
+          const pend: PendingTx = { intent: flagged, txHash: flagged.txHash };
+          return reconcileHash(ctx, state, step, pend);
+        }
+      }
+    }
+    return { state };
+  }
   const pend: PendingTx = { intent: done, txHash: done.txHash };
   // audit N2-M2: callers MUST take the returned state — reconcileHash may
   // have saved a rolled-back version, and a stale copy would CAS-conflict.
@@ -482,11 +511,22 @@ export async function abandonStep(cfg: ChainConfig, step: TxStep): Promise<void>
   if (!(await absentProbe())) {
     throw new Error(`${step} tx ${pend.txHash} appeared on-chain — refusing to abandon`);
   }
-  const latest2 = await client.getTransactionCount({ address: sender }).catch(() => -1);
-  if (latest2 !== nonce) {
-    throw new Error(`nonce moved between probes (${nonce} → ${latest2}) — refusing abandon`);
+  // audit N5-L1: re-read BOTH nonce views after probe 2 — a tx entering the
+  // pool between the probes shows up in the pending count.
+  const [latest2, pending2] = await Promise.all([
+    client.getTransactionCount({ address: sender }).catch(() => -1),
+    client.getTransactionCount({ address: sender, blockTag: "pending" }).catch(() => -1),
+  ]);
+  if (latest2 !== nonce || pending2 !== nonce) {
+    throw new Error(
+      `nonce moved between probes (latest=${latest2}, pending=${pending2}, intent=${nonce}) — refusing abandon`,
+    );
   }
   pend.intent.params.dead = "abandoned";
+  // audit N5-M1(a): pin the nonce — the next same-step sign reuses this
+  // slot, so two txs can never both land even if the abandoned one was
+  // live somewhere this RPC could not see.
+  pend.intent.params.reuseNonce = nonce;
   state = clearPending(state, step);
   const rb = SUBMIT_ROLLBACK[step];
   if (rb && state.stage === rb.submitted) {

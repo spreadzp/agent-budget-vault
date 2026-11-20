@@ -58,7 +58,12 @@ function mockClients(mode: "ok" | "lost-response" | "rejected" = "ok", pendingNo
     // archive nonce reads: the slot crossing 7 → 8 happened at block 60
     getTransactionCount: async (a?: { blockNumber?: bigint }) =>
       a?.blockNumber !== undefined ? (a.blockNumber >= 60n ? pendingNonce : 7) : pendingNonce,
-    getBlock: async () => ({ transactions: [] }),
+    // crossing block (≥60): a DIFFERENT tx from the same sender at nonce 7
+    // consumed the slot — airtight "other" for the block-body proof.
+    getBlock: async ({ blockNumber }: { blockNumber?: bigint } = {}) =>
+      blockNumber !== undefined && blockNumber >= 60n
+        ? { transactions: [{ hash: "0xaaa0000000000000000000000000000000000000000000000000000000000001", from: SENDER, nonce: 7 }] }
+        : { transactions: [] },
     getTransactionReceipt: async ({ hash }: { hash: string }) => {
       if (!seen.has(hash)) throw nf("TransactionReceiptNotFoundError");
       return okReceipt(hash);
