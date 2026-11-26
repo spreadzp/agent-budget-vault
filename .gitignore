@@ -11,3 +11,6 @@ dist/
 # EPIC-254 spike runtime state + code-graph index
 state/
 graphify-out/
+
+cache/
+out/
